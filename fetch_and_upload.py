@@ -1,6 +1,7 @@
 import os, subprocess, requests
 
 HF_REPO = "datasets/sayshara/ol-dump"
+TOKEN = os.environ["HF_TOKEN"]
 FILES = {
     "ol_dump_authors_latest.txt.gz": "https://openlibrary.org/data/ol_dump_authors_latest.txt.gz",
     "ol_dump_editions_latest.txt.gz": "https://openlibrary.org/data/ol_dump_editions_latest.txt.gz",
@@ -9,7 +10,7 @@ FILES = {
 
 # Clone the Hugging Face dataset repo
 print("Cloning Hugging Face repo...")
-subprocess.run(["git", "clone", f"https://huggingface.co/{HF_REPO}", "repo"], check=True)
+subprocess.run(["git", "clone", f"https://{TOKEN}@huggingface.co/{HF_REPO}", "repo"], check=True)
 os.chdir("repo")
 
 # Track with Git LFS once
