@@ -13,6 +13,10 @@ print("Cloning Hugging Face repo...")
 subprocess.run(["git", "clone", f"https://git:{TOKEN}@huggingface.co/{HF_REPO}", "repo"], check=True)
 os.chdir("repo")
 
+# Set Git identity to avoid author identity error
+subprocess.run(["git", "config", "user.email", "openlibrary@autobot.space"], check=True)
+subprocess.run(["git", "config", "user.name", "OpenLibrary Uploader"], check=True)
+
 # Track with Git LFS once
 subprocess.run(["git", "lfs", "track", "*.gz"], check=True)
 with open(".gitattributes", "a") as f:
