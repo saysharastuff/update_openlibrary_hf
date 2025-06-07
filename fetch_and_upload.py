@@ -1,25 +1,41 @@
 import os, subprocess, requests
 
-HF_REPO = "datasets/your-username/openlibrary-dumps"
-DUMP_URL = "https://openlibrary.org/data/ol_dump_latest.txt.gz"
-DUMP_FILE = "ol_dump_latest.txt.gz"
+HF_REPO = "datasets/sayshara/ol-dump"
+FILES = {
+    "ol_dump_authors_latest.txt.gz": "https://openlibrary.org/data/ol_dump_authors_latest.txt.gz",
+    "ol_dump_editions_latest.txt.gz": "https://openlibrary.org/data/ol_dump_editions_latest.txt.gz",
+    "ol_dump_works_latest.txt.gz": "https://openlibrary.org/data/ol_dump_works_latest.txt.gz"
+}
 
-print("Downloading dump...")
-r = requests.get(DUMP_URL, stream=True)
-with open(DUMP_FILE, "wb") as f:
-    for chunk in r.iter_content(chunk_size=8192):
-        f.write(chunk)
-
-print("Cloning HF repo...")
+# Clone the Hugging Face dataset repo
+print("Cloning Hugging Face repo...")
 subprocess.run(["git", "clone", f"https://huggingface.co/{HF_REPO}", "repo"], check=True)
 os.chdir("repo")
 
+# Track with Git LFS once
 subprocess.run(["git", "lfs", "track", "*.gz"], check=True)
-with open(".gitattributes", "a") as f: f.write("\n*.gz filter=lfs diff=lfs merge=lfs -text\n")
+with open(".gitattributes", "a") as f:
+    f.write("\n*.gz filter=lfs diff=lfs merge=lfs -text\n")
+subprocess.run(["git", "add", ".gitattributes"], check=True)
+subprocess.run(["git", "commit", "-m", "Track .gz with LFS"], check=False)
 
-subprocess.run(["mv", f"../{DUMP_FILE}", "."], check=True)
-subprocess.run(["git", "add", "."], check=True)
-subprocess.run(["git", "commit", "-m", "Automated OpenLibrary upload"], check=True)
-
+# Authenticate with Hugging Face
 subprocess.run(["huggingface-cli", "login", "--token", os.environ["HF_TOKEN"]], check=True)
-subprocess.run(["git", "push"], check=True)
+
+# Download, add, commit, and push each file individually
+for filename, url in FILES.items():
+    print(f"Downloading {filename}...")
+    with requests.get(url, stream=True) as r:
+        with open(filename, "wb") as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+    print(f"Moving {filename} into repo...")
+    subprocess.run(["mv", f"../{filename}", "."], check=True)
+
+    subprocess.run(["git", "add", filename], check=True)
+    subprocess.run(["git", "commit", "-m", f"Add {filename}"], check=True)
+    subprocess.run(["git", "push"], check=True)
+
+    print(f"Removing {filename} to conserve space...")
+    os.remove(filename)
