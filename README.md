@@ -1,26 +1,15 @@
-# update_ol_dump
+# 📦 Dataset Uploader Template
 
-This project contains a Python script to check for the latest OpenLibrary ol_dumps (works, editions, authors), download them if not present, and upload them to the HuggingFace Hub (sayshara/ol_dump) using the huggingface CLI with git lfs.
+This repository automates the process of downloading the latest OpenLibrary dump and uploading it to a Hugging Face dataset repository using GitHub Actions.
 
-## Requirements
-- Python 3.8+
-- huggingface_hub
-- git-lfs
-- huggingface-cli (from `pip install huggingface_hub`)
+## 🚀 Setup Instructions
 
-## Usage
-1. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   sudo apt-get install git-lfs
-   ```
-2. Login to HuggingFace CLI:
-   ```bash
-   huggingface-cli login
-   ```
-3. Run the script:
-   ```bash
-   python update_ol_dump.py
-   ```
+1. Create a new repository on GitHub and upload these files.
+2. Go to **Settings > Secrets > Actions** and add a new secret:
+   - `HF_TOKEN`: your Hugging Face access token.
+3. Trigger the workflow manually or wait for the scheduled run (every Sunday at 5am UTC).
 
-The script will check for the latest ol_dump files, download them if needed, and upload them to the specified HuggingFace repository.
+## ✨ Files
+
+- `fetch_and_upload.py`: Downloads and pushes the dataset.
+- `.github/workflows/upload.yml`: GitHub Actions CI job.
