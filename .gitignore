@@ -1,0 +1,5 @@
+.vscode/
+.github/
+ol_dumps/
+__pycache__/
+*.pyc
