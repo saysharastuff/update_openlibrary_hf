@@ -14,13 +14,16 @@ subprocess.run(["git", "clone", f"https://git:{TOKEN}@huggingface.co/{HF_REPO}",
 os.chdir("repo")
 
 # Set Git identity to avoid author identity error
-subprocess.run(["git", "config", "user.email", "openlibrary@autobot.space"], check=True)
+subprocess.run(["git", "config", "user.email", "sayshara@pm.me"], check=True)
 subprocess.run(["git", "config", "user.name", "OpenLibrary Uploader"], check=True)
 
 # Track with Git LFS once
 subprocess.run(["git", "lfs", "track", "*.gz"], check=True)
-with open(".gitattributes", "a") as f:
-    f.write("\\n*.gz filter=lfs diff=lfs merge=lfs -text\\n")
+# Add tracking line only if not present
+ATTR_LINE = "*.gz filter=lfs diff=lfs merge=lfs -text"
+if not os.path.exists(".gitattributes") or ATTR_LINE not in open(".gitattributes").read():
+    with open(".gitattributes", "a") as f:
+        f.write(f"{ATTR_LINE}\n")
 subprocess.run(["git", "add", ".gitattributes"], check=True)
 subprocess.run(["git", "commit", "-m", "Track .gz with LFS"], check=False)
 
