@@ -1,6 +1,6 @@
 import os, subprocess, requests
 
-HF_REPO = "datasets/sayshara/ol-dump"
+HF_REPO = "datasets/sayshara/ol_dump"
 TOKEN = os.environ["HF_TOKEN"]
 FILES = {
     "ol_dump_authors_latest.txt.gz": "https://openlibrary.org/data/ol_dump_authors_latest.txt.gz",
