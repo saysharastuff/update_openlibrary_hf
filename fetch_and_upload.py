@@ -10,7 +10,7 @@ FILES = {
 
 # Clone the Hugging Face dataset repo
 print("Cloning Hugging Face repo...")
-subprocess.run(["git", "clone", f"https://{TOKEN}@huggingface.co/{HF_REPO}", "repo"], check=True)
+subprocess.run(["git", "clone", f"https://git:{TOKEN}@huggingface.co/{HF_REPO}", "repo"], check=True)
 os.chdir("repo")
 
 # Track with Git LFS once
