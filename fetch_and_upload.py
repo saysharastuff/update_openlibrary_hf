@@ -12,12 +12,19 @@ FILES = {
 }
 
 def get_last_modified(url):
-    r = requests.head(url, allow_redirects=True)
-    return r.headers.get("Last-Modified")
+    try:
+        r = requests.head(url, allow_redirects=True, timeout=10)
+        return r.headers.get("Last-Modified")
+    except requests.RequestException as e:
+        print(f"⚠️ Failed to get HEAD from {url}: {e}")
+        return None
+
 
 # Authenticate
 login(token=HF_TOKEN)
 api = HfApi()
+
+print(f"🔗 Syncing files from OpenLibrary to HuggingFace dataset: {HF_REPO_ID}")
 
 for filename, url in FILES.items():
     print(f"🌠 Checking {filename}...")
@@ -46,6 +53,7 @@ for filename, url in FILES.items():
             token=HF_TOKEN
         )
         os.remove(filename)
+        
     else:
         print(f"✅ {filename} is already up to date.")
 
