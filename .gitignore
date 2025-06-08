@@ -3,3 +3,4 @@
 ol_dumps/
 __pycache__/
 *.pyc
+.env
