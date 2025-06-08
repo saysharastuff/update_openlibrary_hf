@@ -1,46 +1,52 @@
-import os, subprocess, requests
+import os
+import requests
+from huggingface_hub import HfApi, login
 
-HF_REPO = "datasets/sayshara/ol_dump"
-TOKEN = os.environ["HF_TOKEN"]
+HF_REPO_ID = "sayshara/ol_dump"
+HF_TOKEN = os.environ["HF_TOKEN"]
+
 FILES = {
     "ol_dump_authors_latest.txt.gz": "https://openlibrary.org/data/ol_dump_authors_latest.txt.gz",
     "ol_dump_editions_latest.txt.gz": "https://openlibrary.org/data/ol_dump_editions_latest.txt.gz",
     "ol_dump_works_latest.txt.gz": "https://openlibrary.org/data/ol_dump_works_latest.txt.gz"
 }
 
-# Clone the Hugging Face dataset repo using a dummy username for authentication
-print("Cloning Hugging Face repo...")
-subprocess.run(["git", "clone", f"https://git:{TOKEN}@huggingface.co/{HF_REPO}", "repo"], check=True)
-os.chdir("repo")
+def get_last_modified(url):
+    r = requests.head(url, allow_redirects=True)
+    return r.headers.get("Last-Modified")
 
-# Set Git identity to avoid author identity error
-subprocess.run(["git", "config", "user.email", "sayshara@pm.me"], check=True)
-subprocess.run(["git", "config", "user.name", "OpenLibrary Uploader"], check=True)
+# Authenticate
+login(token=HF_TOKEN)
+api = HfApi()
 
-# Track with Git LFS once
-subprocess.run(["git", "lfs", "track", "*.gz"], check=True)
-# Add tracking line only if not present
-ATTR_LINE = "*.gz filter=lfs diff=lfs merge=lfs -text"
-if not os.path.exists(".gitattributes") or ATTR_LINE not in open(".gitattributes").read():
-    with open(".gitattributes", "a") as f:
-        f.write(f"{ATTR_LINE}\n")
-subprocess.run(["git", "add", ".gitattributes"], check=True)
-subprocess.run(["git", "commit", "-m", "Track .gz with LFS"], check=False)
-
-# Authenticate for pushing
-subprocess.run(["huggingface-cli", "login", "--token", TOKEN], check=True)
-
-# Download, commit, and push each file individually
 for filename, url in FILES.items():
-    print(f"Downloading {filename}...")
-    with requests.get(url, stream=True) as r:
-        with open(filename, "wb") as f:
-            for chunk in r.iter_content(chunk_size=8192):
-                f.write(chunk)
+    print(f"🌠 Checking {filename}...")
 
-    subprocess.run(["git", "add", filename], check=True)
-    subprocess.run(["git", "commit", "-m", f"Add {filename}"], check=True)
-    subprocess.run(["git", "push"], check=True)
+    # Get timestamps
+    ol_timestamp = get_last_modified(url)
+    hf_url = f"https://huggingface.co/datasets/{HF_REPO_ID}/resolve/main/{filename}"
+    hf_timestamp = get_last_modified(hf_url)
 
-    print(f"Removing {filename} to conserve space...")
-    os.remove(filename)
+    print(f"  🕒 OpenLibrary: {ol_timestamp}")
+    print(f"  🕒 HuggingFace : {hf_timestamp}")
+
+    # Only upload if different or missing
+    if hf_timestamp is None or ol_timestamp > hf_timestamp:
+        print(f"🚀 New version found! Downloading and uploading {filename}...")
+        with requests.get(url, stream=True) as r:
+            with open(filename, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+
+        api.upload_file(
+            path_or_fileobj=filename,
+            path_in_repo=filename,
+            repo_id=HF_REPO_ID,
+            repo_type="dataset",
+            token=HF_TOKEN
+        )
+        os.remove(filename)
+    else:
+        print(f"✅ {filename} is already up to date.")
+
+print("✨ Sync complete!")
