@@ -16,10 +16,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: |
-          pip install huggingface_hub requests
-          sudo apt-get update && sudo apt-get install -y git-lfs
-          git lfs install
+        run: pip install huggingface_hub requests
 
       - name: Run uploader
         env:
