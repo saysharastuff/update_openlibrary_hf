@@ -1,10 +1,12 @@
 import os
+import json
 import requests
-from huggingface_hub import HfApi, login
+from datetime import datetime
+from huggingface_hub import HfApi, upload_file, login
 
+HF_TOKEN = os.environ.get("HF_TOKEN")
 HF_REPO_ID = "sayshara/ol_dump"
-HF_TOKEN = os.environ["HF_TOKEN"]
-
+MANIFEST_PATH = "ol_sync_manifest.json"
 FILES = {
     "ol_dump_authors_latest.txt.gz": "https://openlibrary.org/data/ol_dump_authors_latest.txt.gz",
     "ol_dump_editions_latest.txt.gz": "https://openlibrary.org/data/ol_dump_editions_latest.txt.gz",
@@ -12,56 +14,64 @@ FILES = {
 }
 
 def get_last_modified(url):
-    try:
-        r = requests.head(url, allow_redirects=True, timeout=10)
-        return r.headers.get("Last-Modified")
-    except requests.RequestException as e:
-        print(f"⚠️ Failed to get HEAD from {url}: {e}", flush=True)
-        return None
+    r = requests.head(url, allow_redirects=True)
+    return r.headers.get("Last-Modified")
 
+def load_manifest():
+    if os.path.exists(MANIFEST_PATH):
+        with open(MANIFEST_PATH, "r") as f:
+            return json.load(f)
+    return {}
 
-# Authenticate
-login(token=HF_TOKEN)
-api = HfApi()
+def save_manifest(data):
+    with open(MANIFEST_PATH, "w") as f:
+        json.dump(data, f, indent=2)
 
-print(f"🔗 Syncing files from OpenLibrary to HuggingFace dataset: {HF_REPO_ID}", flush=True)
+def main():
+    login(token=HF_TOKEN)
+    api = HfApi()
+    manifest = load_manifest()
 
-for filename, url in FILES.items():
-    print(f"🌠 Checking {filename}...", flush=True)
+    for filename, url in FILES.items():
+        print(f"\n🌠 Checking {filename}")
+        ol_modified = get_last_modified(url)
+        last_synced = manifest.get(filename, {}).get("source_last_modified")
 
-    # Get timestamps
-    ol_timestamp = get_last_modified(url)
-    hf_url = f"https://huggingface.co/datasets/{HF_REPO_ID}/resolve/main/{filename}"
-    hf_timestamp = get_last_modified(hf_url)
+        if last_synced == ol_modified:
+            print(f"✅ Already up to date (OL: {ol_modified})")
+            continue
 
-    print(f"  🕒 OpenLibrary: {ol_timestamp}", flush=True)
-    print(f"  🕒 HuggingFace : {hf_timestamp}", flush=True)
-
-    # Only upload if different or missing
-    if hf_timestamp is None or ol_timestamp > hf_timestamp:
-        print(f"🚀 New version found! Downloading and uploading {filename}...", flush=True)
-        
-        total = 0
-        
+        print(f"🚀 New version detected (OL: {ol_modified}, HF: {last_synced})")
         with requests.get(url, stream=True) as r:
             with open(filename, "wb") as f:
                 for chunk in r.iter_content(chunk_size=8192):
                     f.write(chunk)
 
-                    total += len(chunk)
-                    if total % (10 * 1024 * 1024) < 8192:  # Every 10MB
-                        print(f"  ...downloaded {total / (1024 * 1024):.1f} MB", flush=True)
-
-        api.upload_file(
+        upload_file(
             path_or_fileobj=filename,
             path_in_repo=filename,
             repo_id=HF_REPO_ID,
             repo_type="dataset",
             token=HF_TOKEN
         )
-        os.remove(filename)
-        
-    else:
-        print(f"✅ {filename} is already up to date.", flush=True)
 
-print("✨ Sync complete!", flush=True)
+        manifest[filename] = {
+            "last_synced": datetime.utcnow().isoformat() + "Z",
+            "source_last_modified": ol_modified
+        }
+
+        os.remove(filename)
+
+    save_manifest(manifest)
+
+    upload_file(
+        path_or_fileobj=MANIFEST_PATH,
+        path_in_repo=f"metadata/{MANIFEST_PATH}",
+        repo_id=HF_REPO_ID,
+        repo_type="dataset",
+        token=HF_TOKEN
+    )
+    print("\n🌟 Sync complete. Manifest updated and uploaded.")
+
+if __name__ == "__main__":
+    main()
