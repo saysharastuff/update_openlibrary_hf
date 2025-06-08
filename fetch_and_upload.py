@@ -40,6 +40,7 @@ for filename, url in FILES.items():
     # Only upload if different or missing
     if hf_timestamp is None or ol_timestamp > hf_timestamp:
         print(f"🚀 New version found! Downloading and uploading {filename}...")
+        """"""
         with requests.get(url, stream=True) as r:
             with open(filename, "wb") as f:
                 for chunk in r.iter_content(chunk_size=8192):
@@ -53,6 +54,7 @@ for filename, url in FILES.items():
             token=HF_TOKEN
         )
         os.remove(filename)
+        """"""
         
     else:
         print(f"✅ {filename} is already up to date.")
