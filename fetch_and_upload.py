@@ -41,6 +41,8 @@ for filename, url in FILES.items():
     if hf_timestamp is None or ol_timestamp > hf_timestamp:
         print(f"🚀 New version found! Downloading and uploading {filename}...", flush=True)
         
+        total = 0
+        
         with requests.get(url, stream=True) as r:
             with open(filename, "wb") as f:
                 for chunk in r.iter_content(chunk_size=8192):
