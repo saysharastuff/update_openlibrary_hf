@@ -16,7 +16,7 @@ def get_last_modified(url):
         r = requests.head(url, allow_redirects=True, timeout=10)
         return r.headers.get("Last-Modified")
     except requests.RequestException as e:
-        print(f"⚠️ Failed to get HEAD from {url}: {e}")
+        print(f"⚠️ Failed to get HEAD from {url}: {e}", flush=True)
         return None
 
 
@@ -24,27 +24,31 @@ def get_last_modified(url):
 login(token=HF_TOKEN)
 api = HfApi()
 
-print(f"🔗 Syncing files from OpenLibrary to HuggingFace dataset: {HF_REPO_ID}")
+print(f"🔗 Syncing files from OpenLibrary to HuggingFace dataset: {HF_REPO_ID}", flush=True)
 
 for filename, url in FILES.items():
-    print(f"🌠 Checking {filename}...")
+    print(f"🌠 Checking {filename}...", flush=True)
 
     # Get timestamps
     ol_timestamp = get_last_modified(url)
     hf_url = f"https://huggingface.co/datasets/{HF_REPO_ID}/resolve/main/{filename}"
     hf_timestamp = get_last_modified(hf_url)
 
-    print(f"  🕒 OpenLibrary: {ol_timestamp}")
-    print(f"  🕒 HuggingFace : {hf_timestamp}")
+    print(f"  🕒 OpenLibrary: {ol_timestamp}", flush=True)
+    print(f"  🕒 HuggingFace : {hf_timestamp}", flush=True)
 
     # Only upload if different or missing
     if hf_timestamp is None or ol_timestamp > hf_timestamp:
-        print(f"🚀 New version found! Downloading and uploading {filename}...")
-        """
+        print(f"🚀 New version found! Downloading and uploading {filename}...", flush=True)
+        
         with requests.get(url, stream=True) as r:
             with open(filename, "wb") as f:
                 for chunk in r.iter_content(chunk_size=8192):
                     f.write(chunk)
+
+                    total += len(chunk)
+                    if total % (10 * 1024 * 1024) < 8192:  # Every 10MB
+                        print(f"  ...downloaded {total / (1024 * 1024):.1f} MB", flush=True)
 
         api.upload_file(
             path_or_fileobj=filename,
@@ -54,9 +58,8 @@ for filename, url in FILES.items():
             token=HF_TOKEN
         )
         os.remove(filename)
-        """
         
     else:
-        print(f"✅ {filename} is already up to date.")
+        print(f"✅ {filename} is already up to date.", flush=True)
 
-print("✨ Sync complete!")
+print("✨ Sync complete!", flush=True)
