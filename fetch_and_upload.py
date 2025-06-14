@@ -6,6 +6,8 @@ from huggingface_hub import HfApi, upload_file, login
 import pandas as pd
 import gzip
 import traceback
+from tqdm import tqdm
+import sys
 
 HF_TOKEN = os.environ.get("HF_TOKEN")
 HF_REPO_ID = "sayshara/ol_dump"
@@ -37,6 +39,65 @@ def convert_txtgz_to_parquet(txtgz_path, parquet_path):
     # Save as Parquet
     df.to_parquet(parquet_path)
 
+def download_file(url, dest_path):
+    response = requests.get(url, stream=True)
+    total = int(response.headers.get('content-length', 0))
+    with open(dest_path, 'wb') as file, tqdm(
+        desc=f"Downloading {os.path.basename(dest_path)}",
+        total=total,
+        unit='B',
+        unit_scale=True,
+        unit_divisor=1024,
+        dynamic_ncols=True,
+        file=sys.stdout,
+        leave=True
+    ) as bar:
+        for data in response.iter_content(chunk_size=1024):
+            size = file.write(data)
+            bar.update(size)
+            bar.refresh()  # Force flush for GitHub Actions
+
+def upload_file(src_path, upload_func):
+    total = os.path.getsize(src_path)
+    with open(src_path, 'rb') as f, tqdm(
+        desc=f"Uploading {os.path.basename(src_path)}",
+        total=total,
+        unit='B',
+        unit_scale=True,
+        unit_divisor=1024,
+        dynamic_ncols=True,
+        file=sys.stdout,
+        leave=True
+    ) as bar:
+        while True:
+            chunk = f.read(1024 * 1024)
+            if not chunk:
+                break
+            upload_func(chunk)
+            bar.update(len(chunk))
+            bar.refresh()  # Force flush for GitHub Actions
+
+def convert_to_parquet(csv_path, parquet_path):
+    # Count lines for progress bar
+    with open(csv_path, 'r', encoding='utf-8') as f:
+        total = sum(1 for _ in f)
+    chunk_size = 100_000
+    reader = pd.read_csv(csv_path, chunksize=chunk_size)
+    with tqdm(
+        total=total,
+        desc=f"Converting {os.path.basename(csv_path)} to Parquet",
+        dynamic_ncols=True,
+        file=sys.stdout,
+        leave=True
+    ) as bar:
+        for i, chunk in enumerate(reader):
+            if i == 0:
+                chunk.to_parquet(parquet_path, index=False)
+            else:
+                chunk.to_parquet(parquet_path, index=False, append=True)
+            bar.update(len(chunk))
+            bar.refresh()  # Force flush for GitHub Actions
+
 def main():
     login(token=HF_TOKEN)
     api = HfApi()
@@ -54,11 +115,7 @@ def main():
         print(f"🚀 New version detected (OL: {ol_modified}, HF: {last_synced})")
         try:
             # Download
-            with requests.get(url, stream=True) as r:
-                r.raise_for_status()
-                with open(filename, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        f.write(chunk)
+            download_file(url, filename)
         except Exception as e:
             print(f"❌ Error downloading {filename}: {e}")
             traceback.print_exc()
