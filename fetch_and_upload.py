@@ -40,6 +40,7 @@ def convert_txtgz_to_parquet(txtgz_path, parquet_path):
     df.to_parquet(parquet_path)
 
 def download_file(url, dest_path):
+    import requests
     response = requests.get(url, stream=True)
     total = int(response.headers.get('content-length', 0))
     with open(dest_path, 'wb') as file, tqdm(
@@ -50,12 +51,14 @@ def download_file(url, dest_path):
         unit_divisor=1024,
         dynamic_ncols=True,
         file=sys.stdout,
-        leave=True
+        leave=True,
+        miniters=1024*100,      # update every 100KB
+        mininterval=0.5         # or at least every 0.5 seconds
     ) as bar:
         for data in response.iter_content(chunk_size=1024):
             size = file.write(data)
             bar.update(size)
-            bar.refresh()  # Force flush for GitHub Actions
+        bar.refresh()
 
 def upload_file(src_path, upload_func):
     total = os.path.getsize(src_path)
@@ -67,7 +70,9 @@ def upload_file(src_path, upload_func):
         unit_divisor=1024,
         dynamic_ncols=True,
         file=sys.stdout,
-        leave=True
+        leave=True,
+        miniters=1024*100,      # update every 100KB
+        mininterval=0.5         # or at least every 0.5 seconds
     ) as bar:
         while True:
             chunk = f.read(1024 * 1024)
@@ -75,9 +80,10 @@ def upload_file(src_path, upload_func):
                 break
             upload_func(chunk)
             bar.update(len(chunk))
-            bar.refresh()  # Force flush for GitHub Actions
+        bar.refresh()
 
 def convert_to_parquet(csv_path, parquet_path):
+    import pandas as pd
     # Count lines for progress bar
     with open(csv_path, 'r', encoding='utf-8') as f:
         total = sum(1 for _ in f)
@@ -88,7 +94,9 @@ def convert_to_parquet(csv_path, parquet_path):
         desc=f"Converting {os.path.basename(csv_path)} to Parquet",
         dynamic_ncols=True,
         file=sys.stdout,
-        leave=True
+        leave=True,
+        miniters=chunk_size,    # update per chunk
+        mininterval=0.5
     ) as bar:
         for i, chunk in enumerate(reader):
             if i == 0:
@@ -96,7 +104,7 @@ def convert_to_parquet(csv_path, parquet_path):
             else:
                 chunk.to_parquet(parquet_path, index=False, append=True)
             bar.update(len(chunk))
-            bar.refresh()  # Force flush for GitHub Actions
+        bar.refresh()
 
 def main():
     login(token=HF_TOKEN)
