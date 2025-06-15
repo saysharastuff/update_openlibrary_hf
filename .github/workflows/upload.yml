@@ -26,7 +26,7 @@ jobs:
       - name: Download + Split + Manifest Update for ${{ matrix.file }}
         run: |
           mkdir -p gz_cache
-          python process_file_once.py ${{ matrix.file }}
+          python split_and_cache.py ${{ matrix.file }}
 
       - name: Upload Manifest
         env:
