@@ -7,6 +7,9 @@ import pandas as pd
 import gzip
 from tqdm import tqdm
 import sys
+import pyarrow as pa
+import pyarrow.parquet as pq
+import traceback
 
 HF_TOKEN = os.environ.get("HF_TOKEN")
 HF_REPO_ID = "sayshara/ol_dump"
@@ -33,26 +36,17 @@ def save_manifest(data):
 
 def convert_txtgz_to_parquet(txtgz_path, parquet_path):
     try:
-        # Read the .txt.gz file in chunks and write to a Parquet file
-        chunk_size = 100000  # Number of rows per chunk
+        chunk_size = 100000
         with gzip.open(txtgz_path, 'rt') as f:
             reader = pd.read_csv(f, sep='\t', index_col=0, chunksize=chunk_size)
-            with tqdm(
-                desc=f"Converting {os.path.basename(txtgz_path)} to Parquet",
-                unit="rows",
-                unit_scale=True,
-                dynamic_ncols=True,
-                leave=True,
-                mininterval=0.5
-            ) as bar:
-                for i, chunk in enumerate(reader):
-                    if i == 0:
-                        chunk.to_parquet(parquet_path, compression='snappy', index=True, engine='pyarrow')
-                    else:
-                        temp_df = pd.read_parquet(parquet_path, engine='pyarrow')
-                        temp_df = pd.concat([temp_df, chunk])
-                        temp_df.to_parquet(parquet_path, compression='snappy', index=True, engine='pyarrow')
-                    bar.update(len(chunk))
+            parquet_writer = None
+            for chunk in tqdm(reader, desc=f"Converting {os.path.basename(txtgz_path)}", dynamic_ncols=True, file=sys.stderr):
+                table = pa.Table.from_pandas(chunk)
+                if parquet_writer is None:
+                    parquet_writer = pq.ParquetWriter(parquet_path, table.schema, compression='snappy')
+                parquet_writer.write_table(table)
+            if parquet_writer:
+                parquet_writer.close()
     except Exception as e:
         print(f"❌ Error converting {txtgz_path} to Parquet: {e}")
         raise
@@ -72,7 +66,8 @@ def download_file(url, dest_path):
             file=sys.stdout,
             leave=True,
             miniters=1024*100,      # update every 100KB
-            mininterval=0.5         # or at least every 0.5 seconds
+            mininterval=0.5,         # or at least every 0.5 seconds
+            file=sys.stderr
         ) as bar:
             for data in response.iter_content(chunk_size=1024):
                 size = file.write(data)
@@ -120,6 +115,7 @@ def process_file(filename):
         return
 
     try:
+        print(f"📤 Uploading {parquet_path} to Hugging Face Hub...")
         upload_file(
             path_or_fileobj=parquet_path,
             path_in_repo=parquet_path,
@@ -162,8 +158,12 @@ def process_file(filename):
     print("\n🌟 Sync complete. Manifest updated and uploaded.")
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("❌ Please provide a filename as an argument.")
+    try:
+        if len(sys.argv) < 2:
+            print("❌ Please provide a filename as an argument.")
+            sys.exit(1)
+        process_file(sys.argv[1])
+    except Exception:
+        print("Unhandled exception:")
+        traceback.print_exc()
         sys.exit(1)
-
-    process_file(sys.argv[1])
