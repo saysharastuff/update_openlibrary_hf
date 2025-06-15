@@ -78,9 +78,3 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_REPO: ${{ env.HF_REPO }}
           MANIFEST: ${{ env.MANIFEST }}
-          echo "Uploading manifest"
-          python3 .github/scripts/ol_sync.py upload --manifest
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          HF_REPO: ${{ env.HF_REPO }}
-          MANIFEST: ${{ env.MANIFEST }}
