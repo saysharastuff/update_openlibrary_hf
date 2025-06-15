@@ -49,7 +49,9 @@ def convert_txtgz_to_parquet(txtgz_path, parquet_path):
                     if i == 0:
                         chunk.to_parquet(parquet_path, compression='snappy', index=True, engine='pyarrow')
                     else:
-                        chunk.to_parquet(parquet_path, compression='snappy', index=True, engine='pyarrow', append=True)
+                        temp_df = pd.read_parquet(parquet_path, engine='pyarrow')
+                        temp_df = pd.concat([temp_df, chunk])
+                        temp_df.to_parquet(parquet_path, compression='snappy', index=True, engine='pyarrow')
                     bar.update(len(chunk))
     except Exception as e:
         print(f"❌ Error converting {txtgz_path} to Parquet: {e}")
