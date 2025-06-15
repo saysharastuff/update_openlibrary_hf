@@ -40,7 +40,7 @@ def convert_txtgz_to_parquet(txtgz_path, parquet_path):
         with gzip.open(txtgz_path, 'rt') as f:
             reader = pd.read_csv(f, sep='\t', index_col=0, chunksize=chunk_size)
             parquet_writer = None
-            for chunk in tqdm(reader, desc=f"Converting {os.path.basename(txtgz_path)}", dynamic_ncols=True, file=sys.stderr):
+            for chunk in reader:
                 table = pa.Table.from_pandas(chunk)
                 if parquet_writer is None:
                     parquet_writer = pq.ParquetWriter(parquet_path, table.schema, compression='snappy')
@@ -65,9 +65,8 @@ def download_file(url, dest_path):
             dynamic_ncols=True,
             file=sys.stdout,
             leave=True,
-            miniters=1024*100,      # update every 100KB
-            mininterval=0.5,         # or at least every 0.5 seconds
-            file=sys.stderr
+            miniters=1024*1000,      # update every 1000KB
+            mininterval=5.0, 
         ) as bar:
             for data in response.iter_content(chunk_size=1024):
                 size = file.write(data)
