@@ -8,6 +8,12 @@ on:
 jobs:
   upload:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        file:
+          - ol_dump_authors_latest.txt.gz
+          - ol_dump_editions_latest.txt.gz
+          - ol_dump_works_latest.txt.gz
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
@@ -20,12 +26,9 @@ jobs:
       - name: Install dependencies
         run: pip install huggingface_hub requests pandas pyarrow tqdm
 
-      - name: Run uploader
+      - name: Run uploader for matrix file
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          echo "Monitoring resource usage before running uploader..."
-          top -b -n 1
-          python fetch_and_upload.py
-          echo "Monitoring resource usage after running uploader..."
-          top -b -n 1
+          echo "Processing file: ${{ matrix.file }}"
+          python fetch_and_upload.py ${{ matrix.file }}
