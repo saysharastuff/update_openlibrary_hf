@@ -34,22 +34,28 @@ def save_manifest(data):
     with open(MANIFEST_PATH, "w") as f:
         json.dump(data, f, indent=2)
 
-def convert_txtgz_to_parquet(txtgz_path, parquet_path):
+def convert_txtgz_to_partitioned_parquet(txtgz_path, output_prefix):
     try:
         chunk_size = 100000
         with gzip.open(txtgz_path, 'rt') as f:
             reader = pd.read_csv(f, sep='\t', index_col=0, chunksize=chunk_size)
-            parquet_writer = None
-            for chunk in reader:
+            for i, chunk in enumerate(reader):
                 table = pa.Table.from_pandas(chunk)
-                if parquet_writer is None:
-                    parquet_writer = pq.ParquetWriter(parquet_path, table.schema, compression='snappy')
-                parquet_writer.write_table(table)
-            if parquet_writer:
-                parquet_writer.close()
+                part_path = f"{output_prefix}-part{i}.parquet"
+                pq.write_table(table, part_path, compression='snappy')
+                print(f"📤 Uploading {part_path} to Hugging Face Hub...")
+                upload_file(
+                    path_or_fileobj=part_path,
+                    path_in_repo=f"parquet/editions/{os.path.basename(part_path)}",
+                    repo_id=HF_REPO_ID,
+                    repo_type="dataset",
+                    token=HF_TOKEN
+                )
+                os.remove(part_path)
     except Exception as e:
-        print(f"❌ Error converting {txtgz_path} to Parquet: {e}")
+        print(f"❌ Error during partitioned Parquet conversion: {e}")
         raise
+
 
 def download_file(url, dest_path):
     try:
