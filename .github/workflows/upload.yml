@@ -110,30 +110,11 @@ jobs:
           mkdir -p stitched_full
           python stitch_parquet_files.py ${{ matrix.dump_base }}.txt.gz
 
-      - name: Delete chunk files from HF after stitching
+      - name: Delete Parquet Chunks
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          pip install huggingface_hub
-          python -c "
-import os
-from huggingface_hub import delete_file
-dump = '${{ matrix.dump_base }}'
-for i in range(1000):  # assumes up to 1000 chunks
-    chunk_name = f'parquet/{dump}/{dump}_chunk_{i:03}.parquet'
-    try:
-        delete_file(
-            path_in_repo=chunk_name,
-            repo_id='sayshara/ol_dump',
-            repo_type='dataset',
-            token=os.environ['HF_TOKEN']
-        )
-        print(f'🧹 Deleted {chunk_name}')
-    except Exception as e:
-        if '404' in str(e):
-            break  # no more chunks
-        print(f'⚠️ Error deleting {chunk_name}: {e}')
-"
+          python delete_parquet_chunks.py ${{ matrix.dump_base }}
 
       - name: Upload stitched Parquet file
         env:
