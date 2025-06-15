@@ -1,9 +1,5 @@
 .vscode/
-.github/
 ol_dumps/
 __pycache__/
 *.pyc
 .env
-
-!.github/workflows/*
-!.github/scripts/*
