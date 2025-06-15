@@ -32,5 +32,7 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          pip install huggingface_hub huggingface-cli
-          huggingface-cli upload sayshara/ol_dump             ol_sync_manifest.json metadata/ol_sync_manifest.json             --repo-type dataset --token "$HF_TOKEN"
+          pip install huggingface_hub huggingface_hub[cli]
+          huggingface-cli upload sayshara/ol_dump             
+          ol_sync_manifest.json metadata/ol_sync_manifest.json             
+          --repo-type dataset --token "$HF_TOKEN"

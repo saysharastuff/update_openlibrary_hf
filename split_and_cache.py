@@ -3,9 +3,14 @@ import sys
 import json
 import requests
 import gzip
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 from tqdm import tqdm
 from datetime import datetime
+from huggingface_hub import login, upload_file
 
+HF_TOKEN = os.environ.get("HF_TOKEN")
 HF_REPO_ID = "sayshara/ol_dump"
 CACHE_DIR = "gz_cache"
 CHUNK_DIR = "chunks"
@@ -45,6 +50,31 @@ def split_large_file(path, out_dir, max_lines=LINES_PER_CHUNK):
             with gzip.open(out_path, 'wt') as out_f:
                 out_f.writelines(current_lines)
             print(f"✅ Wrote final chunk {i:03} for {base}")
+
+def convert_small_file_to_parquet(txtgz_path, parquet_path):
+    print(f"📦 Converting {os.path.basename(txtgz_path)} to Parquet...")
+    chunk_size = 100_000
+    with gzip.open(txtgz_path, 'rt') as f:
+        reader = pd.read_csv(f, sep='\t', index_col=0, chunksize=chunk_size)
+        parquet_writer = None
+        for chunk in tqdm(reader, desc="Writing Parquet", dynamic_ncols=True):
+            table = pa.Table.from_pandas(chunk)
+            if parquet_writer is None:
+                parquet_writer = pq.ParquetWriter(parquet_path, table.schema, compression='snappy')
+            parquet_writer.write_table(table)
+        if parquet_writer:
+            parquet_writer.close()
+
+    print(f"📤 Uploading {parquet_path} to Hugging Face Hub")
+    login(token=HF_TOKEN)
+    upload_file(
+        path_or_fileobj=parquet_path,
+        path_in_repo=f"parquet/{os.path.basename(parquet_path)}",
+        repo_id=HF_REPO_ID,
+        repo_type="dataset",
+        token=HF_TOKEN
+    )
+    os.remove(parquet_path)
 
 def get_last_modified(url):
     try:
@@ -113,6 +143,7 @@ if __name__ == "__main__":
         print(f"🔪 Splitting {fname}...")
         split_large_file(fpath, CHUNK_DIR)
     else:
-        print(f"📦 No split needed. Skipping split for {fname}.")
+        parquet_path = fpath.replace('.txt.gz', '.parquet')
+        convert_small_file_to_parquet(fpath, parquet_path)
 
     save_manifest(manifest)
