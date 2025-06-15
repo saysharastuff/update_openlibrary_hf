@@ -143,29 +143,4 @@ def main():
     print("\n🌟 Sync complete. Manifest updated and uploaded.")
 
 if __name__ == "__main__":
-    main()
-            "source_last_modified": ol_modified
-        }
-
-        # Clean up files after successful upload
-        if os.path.exists(filename):
-            os.remove(filename)
-        if os.path.exists(parquet_path):
-            os.remove(parquet_path)
-
-    save_manifest(manifest)
-    try:
-        upload_file(
-            path_or_fileobj=MANIFEST_PATH,
-            path_in_repo=f"metadata/{MANIFEST_PATH}",
-            repo_id=HF_REPO_ID,
-            repo_type="dataset",
-            token=HF_TOKEN
-        )
-    except Exception as e:
-        print(f"❌ Error uploading manifest: {e}")
-
-    print("\n🌟 Sync complete. Manifest updated and uploaded.")
-
-if __name__ == "__main__":
-    main()
+    main()   
