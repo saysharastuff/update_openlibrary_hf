@@ -33,7 +33,6 @@ jobs:
       updated: ${{ steps.check.outputs.updated_any }}
     steps:
       - uses: actions/checkout@v3
-
       - name: Setup cache for dumps and manifest
         uses: actions/cache@v3
         with:
@@ -41,15 +40,12 @@ jobs:
             *.txt.gz
             ${{ env.MANIFEST }}
           key: ${{ runner.os }}-ol-dumps-${{ hashFiles('*.txt.gz') }}
-
       - name: Check for updates and download
         id: check
-        run: |
-          python3 .github/scripts/ol_sync.py check-download
+        run: python3 .github/scripts/ol_sync.py check-download
         env:
           DUMPS: ${{ toJson(env.DUMPS) }}
           MANIFEST: ${{ env.MANIFEST }}
-        shell: bash
 
   convert:
     needs: download
@@ -69,10 +65,10 @@ jobs:
       - name: Split dump into chunks
         if: ${{ env.SPLIT_DUMPS == 'true' }}
         run: |
-          bash -lc "python3 .github/scripts/ol_sync.py split --dump ${{ matrix.dump }}"
+          python3 .github/scripts/ol_sync.py split --dump ${{ matrix.dump }}
       - name: Convert to Parquet
         run: |
-          bash -lc "python3 .github/scripts/ol_sync.py convert --dump ${{ matrix.dump }}"
+          python3 .github/scripts/ol_sync.py convert --dump ${{ matrix.dump }}
 
   upload:
     needs: convert
@@ -84,7 +80,12 @@ jobs:
         run: pip install huggingface_hub
       - name: Upload Parquet and manifest
         run: |
-          python3 .github/scripts/ol_sync.py upload
+          for p in *.parquet; do
+            echo "Uploading $p"
+            python3 .github/scripts/ol_sync.py upload --file "$p"
+          done
+          echo "Uploading manifest"
+          python3 .github/scripts/ol_sync.py upload --manifest
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_REPO: ${{ env.HF_REPO }}
