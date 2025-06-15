@@ -6,5 +6,3 @@ txtai[api, cloud, graph, vectors]
 torch==2.7.1+cpu
 torchvision==0.22.1+cpu
 plotly==6.1.2
-pandas==2.3.0
-pyarrow==20.0.0

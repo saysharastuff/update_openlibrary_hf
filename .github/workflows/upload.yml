@@ -1,10 +1,11 @@
-name: Sequential OL Upload
+name: OpenLibrary Upload with General Stitching
 
 on:
   workflow_dispatch:
 
 jobs:
-  process_each_file:
+  download_and_split:
+    name: Download + Split ${ matrix.file }
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -21,18 +22,144 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install tqdm requests
+        run: pip install tqdm requests pandas pyarrow huggingface_hub
 
-      - name: Download + Split + Manifest Update for ${{ matrix.file }}
+      - name: Download and Split/Convert
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           mkdir -p gz_cache
           python split_and_cache.py ${{ matrix.file }}
 
-      - name: Upload Manifest
+      - name: Upload GZ chunks as artifact (if split required)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chunks-${{ matrix.file }}
+          path: chunks/${{ matrix.file.replace('.txt.gz', '') }}_chunk_*.txt.gz
+          if-no-files-found: ignore
+          retention-days: 7
+
+  convert_and_upload:
+    name: Convert Chunks to Parquet & Upload
+    needs: download_and_split
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install pandas pyarrow tqdm huggingface_hub
+
+      - name: Download all chunk artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: chunks
+
+      - name: Flatten chunk folder layout
+        run: |
+          mkdir -p flat_chunks
+          find chunks -name '*.txt.gz' -exec mv {} flat_chunks/ \;
+
+      - name: Convert and Upload all chunks
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          pip install huggingface_hub huggingface_hub[cli]
+          for f in flat_chunks/*.txt.gz; do
+            echo "📦 Processing $f"
+            python fetch_and_upload_matrix.py "$f"
+          done
+
+  stitch_combined:
+    name: Stitch Parquet Files
+    needs: convert_and_upload
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dump_base:
+          - ol_dump_authors_latest
+          - ol_dump_editions_latest
+          - ol_dump_works_latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install pyarrow tqdm huggingface_hub
+
+      - name: Download all stitched parts
+        uses: actions/download-artifact@v4
+        with:
+          path: stitched_parts
+
+      - name: Flatten stitched parts
+        run: |
+          mkdir -p stitched_parts
+          find stitched_parts -name '*.parquet' -exec mv {} stitched_parts/ \;
+
+      - name: Stitch chunks for ${{ matrix.dump_base }}
+        run: |
+          mkdir -p stitched_full
+          python stitch_parquet_files.py ${{ matrix.dump_base }}.txt.gz
+
+      - name: Delete chunk files from HF after stitching
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          pip install huggingface_hub
+          python -c "
+import os
+from huggingface_hub import delete_file
+dump = '${{ matrix.dump_base }}'
+for i in range(1000):  # assumes up to 1000 chunks
+    chunk_name = f'parquet/{dump}/{dump}_chunk_{i:03}.parquet'
+    try:
+        delete_file(
+            path_in_repo=chunk_name,
+            repo_id='sayshara/ol_dump',
+            repo_type='dataset',
+            token=os.environ['HF_TOKEN']
+        )
+        print(f'🧹 Deleted {chunk_name}')
+    except Exception as e:
+        if '404' in str(e):
+            break  # no more chunks
+        print(f'⚠️ Error deleting {chunk_name}: {e}')
+"
+
+      - name: Upload stitched Parquet file
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          huggingface-cli upload sayshara/ol_dump             stitched_full/${{ matrix.dump_base }}.full.parquet             stitched/${{ matrix.dump_base }}.full.parquet             --repo-type dataset --token "$HF_TOKEN"
+
+  upload_manifest:
+    name: Upload Sync Manifest
+    needs: [convert_and_upload, stitch_combined]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install huggingface-hub CLI
+        run: pip install huggingface_hub huggingface_hub[cli]
+
+      - name: Upload ol_sync_manifest.json to HF Hub
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
           huggingface-cli upload sayshara/ol_dump             
           ol_sync_manifest.json metadata/ol_sync_manifest.json             
           --repo-type dataset --token "$HF_TOKEN"
