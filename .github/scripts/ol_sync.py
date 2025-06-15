@@ -26,7 +26,7 @@ def check_download():
     for d in DUMPS:
         hdr = requests.head(d['url']).headers.get('Last-Modified')
         if mf.get(d['file'], {}).get('source_last_modified') != hdr:
-            print(f\"Downloading {d['file']}\")
+            print(f"Downloading {d['file']}")
             r = requests.get(d['url'], stream=True)
             with open(d['file'], 'wb') as f:
                 for chunk in r.iter_content(8192):
