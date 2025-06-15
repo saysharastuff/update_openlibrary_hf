@@ -43,12 +43,13 @@ def convert_txtgz_to_parquet(txtgz_path, parquet_path):
                 unit_scale=True,
                 dynamic_ncols=True,
                 leave=True,
-                miniters=chunk_size,
                 mininterval=0.5
             ) as bar:
                 for i, chunk in enumerate(reader):
-                    mode = 'wb' if i == 0 else 'a'  # Write mode for first chunk, append mode for others
-                    chunk.to_parquet(parquet_path, compression='snappy', index=True, engine='pyarrow', mode=mode)
+                    if i == 0:
+                        chunk.to_parquet(parquet_path, compression='snappy', index=True, engine='pyarrow')
+                    else:
+                        chunk.to_parquet(parquet_path, compression='snappy', index=True, engine='pyarrow', append=True)
                     bar.update(len(chunk))
     except Exception as e:
         print(f"❌ Error converting {txtgz_path} to Parquet: {e}")
