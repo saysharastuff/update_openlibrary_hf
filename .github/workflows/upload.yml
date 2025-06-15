@@ -73,11 +73,11 @@ jobs:
       - name: Setup HF CLI
         run: pip install huggingface_hub
       - name: Upload Parquet and manifest
-        run: |
-          for p in *.parquet; do
-            echo "Uploading $p"
-            python3 .github/scripts/ol_sync.py upload --file "$p"
-          done
+        run: python3 .github/scripts/ol_sync.py upload
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_REPO: ${{ env.HF_REPO }}
+          MANIFEST: ${{ env.MANIFEST }}
           echo "Uploading manifest"
           python3 .github/scripts/ol_sync.py upload --manifest
         env:

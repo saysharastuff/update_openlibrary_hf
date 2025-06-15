@@ -76,14 +76,22 @@ def convert_dump(dump):
         return
     import pyarrow.csv as csv
     import pyarrow.parquet as pq
+    import gzip
 
     for chunk in sorted(files):
         out_file = chunk.rsplit('.', 1)[0] + '.parquet'
         print(f"Converting {chunk} → {out_file}")
-        table = csv.read_csv(
-            chunk,
-            parse_options=csv.ParseOptions(delimiter='\t')
-        )
+        if chunk.endswith('.gz'):
+            with gzip.open(chunk, 'rt') as f:
+                table = csv.read_csv(
+                    f,
+                    parse_options=csv.ParseOptions(delimiter='\t')
+                )
+        else:
+            table = csv.read_csv(
+                chunk,
+                parse_options=csv.ParseOptions(delimiter='\t')
+            )
         pq.write_table(table, out_file)
     print(f"Finished converting dump '{dump}'")
 
@@ -130,7 +138,6 @@ def main():
     if args.command == 'check-download':
         check_download()
     elif args.command == 'split':
-        convert = split_dump
         split_dump(args.dump)
     elif args.command == 'convert':
         convert_dump(args.dump)
