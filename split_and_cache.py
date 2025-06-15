@@ -5,12 +5,13 @@ import requests
 import gzip
 from tqdm import tqdm
 from datetime import datetime
-from split_and_cache import split_large_file
 
 HF_REPO_ID = "sayshara/ol_dump"
 CACHE_DIR = "gz_cache"
 CHUNK_DIR = "chunks"
 MANIFEST_PATH = "ol_sync_manifest.json"
+LINES_PER_CHUNK = 5_000_000
+
 FILES = {
     "ol_dump_authors_latest.txt.gz": "https://openlibrary.org/data/ol_dump_authors_latest.txt.gz",
     "ol_dump_editions_latest.txt.gz": "https://openlibrary.org/data/ol_dump_editions_latest.txt.gz",
@@ -20,6 +21,30 @@ FILES = {
 def ensure_dir(path):
     if not os.path.exists(path):
         os.makedirs(path)
+
+def split_large_file(path, out_dir, max_lines=LINES_PER_CHUNK):
+    ensure_dir(out_dir)
+    base = os.path.basename(path).replace('.txt.gz', '')
+    i = 0
+    line_count = 0
+    current_lines = []
+    with gzip.open(path, 'rt') as f:
+        for line in f:
+            current_lines.append(line)
+            line_count += 1
+            if line_count >= max_lines:
+                out_path = os.path.join(out_dir, f"{base}_chunk_{i:03}.txt.gz")
+                with gzip.open(out_path, 'wt') as out_f:
+                    out_f.writelines(current_lines)
+                print(f"✅ Wrote chunk {i:03} for {base}")
+                i += 1
+                current_lines = []
+                line_count = 0
+        if current_lines:
+            out_path = os.path.join(out_dir, f"{base}_chunk_{i:03}.txt.gz")
+            with gzip.open(out_path, 'wt') as out_f:
+                out_f.writelines(current_lines)
+            print(f"✅ Wrote final chunk {i:03} for {base}")
 
 def get_last_modified(url):
     try:
@@ -59,12 +84,16 @@ if __name__ == "__main__":
         print("❌ Please provide a filename as an argument.")
         sys.exit(1)
 
+    fname = sys.argv[1]
+    url = FILES.get(fname)
+    if not url:
+        print(f"❌ Unknown file: {fname}")
+        sys.exit(1)
+
     ensure_dir(CACHE_DIR)
     ensure_dir(CHUNK_DIR)
     manifest = load_manifest()
 
-    fname = sys.argv[1]
-    url = FILES[fname]
     fpath = os.path.join(CACHE_DIR, fname)
     remote_last_modified = get_last_modified(url)
     local_record = manifest.get(fname, {})
@@ -84,6 +113,6 @@ if __name__ == "__main__":
         print(f"🔪 Splitting {fname}...")
         split_large_file(fpath, CHUNK_DIR)
     else:
-        print(f"📤 No split needed, uploading directly not yet implemented in this stage.")
+        print(f"📦 No split needed. Skipping split for {fname}.")
 
     save_manifest(manifest)
