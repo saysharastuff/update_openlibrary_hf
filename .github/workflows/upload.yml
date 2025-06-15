@@ -1,4 +1,4 @@
-name: OpenLibrary to Hugging Face Pipeline
+name: OpenLibrary Parquet Pipeline
 
 on:
   workflow_dispatch:
@@ -67,4 +67,33 @@ jobs:
         run: |
           mkdir -p chunks
           cp ${{ matrix.chunk_file }} chunks/
-          python fetch_and_upload.py chunks/$(basename "${{ matrix.chunk_file }}")
+          python fetch_and_upload_matrix.py chunks/$(basename "${{ matrix.chunk_file }}")
+
+  upload_manifest:
+    name: Upload Manifest to Hugging Face
+    needs: [prepare, convert]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Restore GZ file cache
+        uses: actions/cache@v3
+        with:
+          path: gz_cache
+          key: ol-dumps-${{ hashFiles('gz_cache/*') }}
+
+      - name: Install huggingface-hub
+        run: pip install huggingface_hub huggingface-cli
+
+      - name: Upload ol_sync_manifest.json
+  env:
+    HF_TOKEN: ${{ secrets.HF_TOKEN }}
+  run: |
+    huggingface-cli upload sayshara/ol_dump \
+      ol_sync_manifest.json metadata/ol_sync_manifest.json \
+      --repo-type dataset --token "$HF_TOKEN"
