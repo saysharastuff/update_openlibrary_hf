@@ -1,34 +1,70 @@
-name: Upload OpenLibrary Dump
+name: OpenLibrary to Hugging Face Pipeline
 
 on:
-  schedule:
-    - cron: '0 5 * * *'  # Every day at 5:00 UTC
   workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * 0'  # weekly
 
 jobs:
-  upload:
+  prepare:
+    name: Download and Split Dumps
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        file:
-          - ol_dump_authors_latest.txt.gz
-          - ol_dump_editions_latest.txt.gz
-          - ol_dump_works_latest.txt.gz
+    outputs:
+      chunks: ${{ steps.list_chunks.outputs.chunk_files }}
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: '3.10'
+
+      - name: Restore GZ file cache
+        uses: actions/cache@v3
+        with:
+          path: gz_cache
+          key: ol-dumps-${{ hashFiles('gz_cache/*') }}
 
       - name: Install dependencies
-        run: pip install huggingface_hub requests pandas pyarrow tqdm
+        run: pip install tqdm requests
 
-      - name: Run uploader for matrix file
+      - name: Download and Split Files
+        run: python split_and_cache.py
+
+      - name: List Chunks for Matrix
+        id: list_chunks
+        run: |
+          CHUNKS=$(find chunks -name '*.txt.gz' | sort | jq -R -s -c 'split("\n")[:-1]')
+          echo "chunk_files=$CHUNKS" >> $GITHUB_OUTPUT
+
+  convert:
+    name: Convert & Upload Parquet
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        chunk_file: ${{ fromJson(needs.prepare.outputs.chunks) }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Restore GZ file cache
+        uses: actions/cache@v3
+        with:
+          path: gz_cache
+          key: ol-dumps-${{ hashFiles('gz_cache/*') }}
+
+      - name: Install dependencies
+        run: pip install pandas pyarrow tqdm huggingface_hub
+
+      - name: Convert and Upload Chunk
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          echo "Processing file: ${{ matrix.file }}"
-          python fetch_and_upload.py ${{ matrix.file }}
+          mkdir -p chunks
+          cp ${{ matrix.chunk_file }} chunks/
+          python fetch_and_upload.py chunks/$(basename "${{ matrix.chunk_file }}")

@@ -1,173 +1,60 @@
 import os
-import json
-import requests
-from datetime import datetime
-from huggingface_hub import HfApi, upload_file, login
-import pandas as pd
-import gzip
-from tqdm import tqdm
 import sys
+import gzip
+import pandas as pd
+from tqdm import tqdm
 import pyarrow as pa
 import pyarrow.parquet as pq
+from huggingface_hub import login, upload_file
 import traceback
 
 HF_TOKEN = os.environ.get("HF_TOKEN")
 HF_REPO_ID = "sayshara/ol_dump"
-MANIFEST_PATH = "ol_sync_manifest.json"
-FILES = {
-    "ol_dump_authors_latest.txt.gz": "https://openlibrary.org/data/ol_dump_authors_latest.txt.gz",
-    "ol_dump_editions_latest.txt.gz": "https://openlibrary.org/data/ol_dump_editions_latest.txt.gz",
-    "ol_dump_works_latest.txt.gz": "https://openlibrary.org/data/ol_dump_works_latest.txt.gz"
-}
 
-def get_last_modified(url):
-    r = requests.head(url, allow_redirects=True)
-    return r.headers.get("Last-Modified")
-
-def load_manifest():
-    if os.path.exists(MANIFEST_PATH):
-        with open(MANIFEST_PATH, "r") as f:
-            return json.load(f)
-    return {}
-
-def save_manifest(data):
-    with open(MANIFEST_PATH, "w") as f:
-        json.dump(data, f, indent=2)
-
-def convert_txtgz_to_partitioned_parquet(txtgz_path, output_prefix):
+def convert_txtgz_to_parquet(txtgz_path, parquet_path):
+    chunk_size = 100_000
     try:
-        chunk_size = 100000
         with gzip.open(txtgz_path, 'rt') as f:
             reader = pd.read_csv(f, sep='\t', index_col=0, chunksize=chunk_size)
-            for i, chunk in enumerate(reader):
+            parquet_writer = None
+            for chunk in tqdm(reader, desc=f"Converting {os.path.basename(txtgz_path)}", dynamic_ncols=True):
                 table = pa.Table.from_pandas(chunk)
-                part_path = f"{output_prefix}-part{i}.parquet"
-                pq.write_table(table, part_path, compression='snappy')
-                print(f"📤 Uploading {part_path} to Hugging Face Hub...")
-                upload_file(
-                    path_or_fileobj=part_path,
-                    path_in_repo=f"parquet/editions/{os.path.basename(part_path)}",
-                    repo_id=HF_REPO_ID,
-                    repo_type="dataset",
-                    token=HF_TOKEN
-                )
-                os.remove(part_path)
+                if parquet_writer is None:
+                    parquet_writer = pq.ParquetWriter(parquet_path, table.schema, compression='snappy')
+                parquet_writer.write_table(table)
+            if parquet_writer:
+                parquet_writer.close()
     except Exception as e:
-        print(f"❌ Error during partitioned Parquet conversion: {e}")
+        print(f"❌ Error converting {txtgz_path} to Parquet: {e}")
         raise
 
-
-def download_file(url, dest_path):
-    try:
-        response = requests.get(url, stream=True)
-        response.raise_for_status()  # Ensure HTTP errors are raised
-        total = int(response.headers.get('content-length', 0))
-        with open(dest_path, 'wb') as file, tqdm(
-            desc=f"Downloading {os.path.basename(dest_path)}",
-            total=total,
-            unit='B',
-            unit_scale=True,
-            unit_divisor=1024,
-            dynamic_ncols=True,
-            file=sys.stdout,
-            leave=True,
-            miniters=1024*1000,      # update every 1000KB
-            mininterval=5.0, 
-        ) as bar:
-            for data in response.iter_content(chunk_size=1024):
-                size = file.write(data)
-                bar.update(size)
-            bar.refresh()
-            print("✅ Download complete.")
-    except requests.RequestException as e:
-        print(f"❌ Error downloading {url}: {e}")
-        raise
-
-def process_file(filename):
+def process_chunk(chunk_path):
     login(token=HF_TOKEN)
-    
-    manifest = load_manifest()
 
-    url = FILES.get(filename)
-    if not url:
-        print(f"❌ File {filename} not found in FILES.")
-        return
+    filename = os.path.basename(chunk_path)
+    parquet_name = filename.replace('.txt.gz', '.parquet')
+    parquet_path = os.path.join("chunks", parquet_name)
 
-    print(f"\n🌠 Checking {filename}")
-    ol_modified = get_last_modified(url)
-    last_synced = manifest.get(filename, {}).get("source_last_modified")
+    print(f"📦 Converting {filename} to {parquet_name}")
+    convert_txtgz_to_parquet(chunk_path, parquet_path)
 
-    if last_synced == ol_modified:
-        print(f"✅ Already up to date (OL: {ol_modified})")
-        return
+    print(f"📤 Uploading {parquet_name} to Hugging Face Hub")
+    upload_file(
+        path_or_fileobj=parquet_path,
+        path_in_repo=f"parquet/editions/{parquet_name}",
+        repo_id=HF_REPO_ID,
+        repo_type="dataset",
+        token=HF_TOKEN
+    )
 
-    print(f"🚀 New version detected (OL: {ol_modified}, HF: {last_synced})")
-    try:
-        # Download
-        download_file(url, filename)
-    except Exception:
-        return  # Skip if download fails
-
-    parquet_path = filename.replace('.txt.gz', '.parquet')
-
-    try:
-        print(f"📦 Converting {filename} to Parquet format...")
-        convert_txtgz_to_parquet(filename, parquet_path)
-    except Exception:
-        # Clean up downloaded file if conversion fails
-        if os.path.exists(filename):
-            os.remove(filename)
-        return
-
-    try:
-        print(f"📤 Uploading {parquet_path} to Hugging Face Hub...")
-        upload_file(
-            path_or_fileobj=parquet_path,
-            path_in_repo=parquet_path,
-            repo_id=HF_REPO_ID,
-            repo_type="dataset",
-            token=HF_TOKEN
-        )
-    except Exception as e:
-        print(f"❌ Error uploading {parquet_path}: {e}")
-        # Clean up files if upload fails
-        if os.path.exists(filename):
-            os.remove(filename)
-        if os.path.exists(parquet_path):
-            os.remove(parquet_path)
-        return
-
-    manifest[filename] = {
-        "last_synced": datetime.utcnow().isoformat() + "Z",
-        "source_last_modified": ol_modified
-    }
-
-    # Clean up files after successful upload
-    if os.path.exists(filename):
-        os.remove(filename)
-    if os.path.exists(parquet_path):
-        os.remove(parquet_path)
-
-    save_manifest(manifest)
-    try:
-        upload_file(
-            path_or_fileobj=MANIFEST_PATH,
-            path_in_repo=f"metadata/{MANIFEST_PATH}",
-            repo_id=HF_REPO_ID,
-            repo_type="dataset",
-            token=HF_TOKEN
-        )
-    except Exception as e:
-        print(f"❌ Error uploading manifest: {e}")
-
-    print("\n🌟 Sync complete. Manifest updated and uploaded.")
+    os.remove(parquet_path)
 
 if __name__ == "__main__":
     try:
         if len(sys.argv) < 2:
-            print("❌ Please provide a filename as an argument.")
+            print("❌ Please provide a .txt.gz chunk file as an argument.")
             sys.exit(1)
-        process_file(sys.argv[1])
+        process_chunk(sys.argv[1])
     except Exception:
         print("Unhandled exception:")
         traceback.print_exc()
