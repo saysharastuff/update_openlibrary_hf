@@ -23,4 +23,9 @@ jobs:
       - name: Run uploader
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: python fetch_and_upload.py
+        run: |
+          echo "Monitoring resource usage before running uploader..."
+          top -b -n 1
+          python fetch_and_upload.py
+          echo "Monitoring resource usage after running uploader..."
+          top -b -n 1

@@ -64,6 +64,7 @@ def download_file(url, dest_path):
                 size = file.write(data)
                 bar.update(size)
             bar.refresh()
+            print("✅ Download complete.")
     except requests.RequestException as e:
         print(f"❌ Error downloading {url}: {e}")
         raise
