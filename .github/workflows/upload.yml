@@ -15,10 +15,6 @@ env:
   HF_REPO: sayshara/ol_dump
   MANIFEST: ol_sync_manifest.json
   SPLIT_DUMPS: 'true'
-  DUMPS: >-
-    [{"name":"authors","url":"https://openlibrary.org/data/ol_dump_authors_latest.txt.gz","file":"ol_dump_authors_latest.txt.gz"},
-     {"name":"editions","url":"https://openlibrary.org/data/ol_dump_editions_latest.txt.gz","file":"ol_dump_editions_latest.txt.gz"},
-     {"name":"works","url":"https://openlibrary.org/data/ol_dump_works_latest.txt.gz","file":"ol_dump_works_latest.txt.gz"}]
 
 jobs:
   download:
@@ -38,7 +34,6 @@ jobs:
         id: check
         run: python3 .github/scripts/ol_sync.py check-download
         env:
-          DUMPS: ${{ toJson(env.DUMPS) }}
           MANIFEST: ${{ env.MANIFEST }}
 
   convert:

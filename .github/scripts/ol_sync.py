@@ -17,7 +17,21 @@ import subprocess
 # Environment-based config
 env = os.environ
 MANIFEST = env.get('MANIFEST', 'ol_sync_manifest.json')
-DUMPS = json.loads(env.get('DUMPS', '[]'))
+
+DEFAULT_DUMPS = [
+    {"name": "authors", "url": "https://openlibrary.org/data/ol_dump_authors_latest.txt.gz", "file": "ol_dump_authors_latest.txt.gz"},
+    {"name": "editions", "url": "https://openlibrary.org/data/ol_dump_editions_latest.txt.gz", "file": "ol_dump_editions_latest.txt.gz"},
+    {"name": "works", "url": "https://openlibrary.org/data/ol_dump_works_latest.txt.gz", "file": "ol_dump_works_latest.txt.gz"}
+]
+
+try:
+    DUMPS = json.loads(env.get('DUMPS', json.dumps(DEFAULT_DUMPS)))
+    if not isinstance(DUMPS, list):
+        raise ValueError("DUMPS must be a JSON array")
+except json.JSONDecodeError:
+    print("Error: DUMPS environment variable is not valid JSON")
+    sys.exit(1)
+
 HF_TOKEN = env.get('HF_TOKEN')
 HF_REPO = env.get('HF_REPO')
 
