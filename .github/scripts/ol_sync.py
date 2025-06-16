@@ -55,11 +55,14 @@ def check_download():
         url = d['url']
         fname = d['file']
         print(f"Checking dump: {fname} from {url}")  # Add logging
+        sys.stdout.flush()  # Flush output
         headers = requests.head(url).headers
         last_mod = headers.get('Last-Modified')
         print(f"Last-Modified header: {last_mod}")  # Add logging
+        sys.stdout.flush()  # Flush output
         if last_mod is None or mf.get(fname, {}).get('source_last_modified') != last_mod:
             print(f"Downloading {fname}...")
+            sys.stdout.flush()  # Flush output
             r = requests.get(url, stream=True)
             r.raise_for_status()
             with open(fname, 'wb') as out_f:
@@ -69,9 +72,11 @@ def check_download():
             updated_any = True
         else:
             print(f"No updates for {fname}.")  # Add logging
+            sys.stdout.flush()  # Flush output
     save_manifest(mf)
     # GitHub Actions output
     print(f"::set-output name=updated_any::{str(updated_any).lower()}")
+    sys.stdout.flush()  # Flush output
 
 
 def split_dump(dump):
@@ -154,6 +159,7 @@ def main():
 
     args = parser.parse_args()
     print(f"Executing command: {args.command}")  # Add logging
+    sys.stdout.flush()  # Flush output
 
     if args.command == 'check-download':
         check_download()
