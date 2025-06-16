@@ -1,0 +1,32 @@
+name: OpenLibrary to HuggingFace
+
+on:
+  workflow_dispatch:
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          pip install pandas pyarrow huggingface_hub requests
+
+      - name: Process authors
+        run: |
+          python workflow/fetch_and_upload.py --only ol_dump_authors_latest.txt.gz
+          python workflow/convert_to_parquet.py ol_dump_authors_latest.txt.gz ol_dump_authors_latest
+
+      - name: Process editions
+        run: |
+          python workflow/fetch_and_upload.py --only ol_dump_editions_latest.txt.gz
+          python workflow/convert_to_parquet.py ol_dump_editions_latest.txt.gz ol_dump_editions_latest
+
+      - name: Process works
+        run: |
+          python workflow/fetch_and_upload.py --only ol_dump_works_latest.txt.gz
+          python workflow/convert_to_parquet.py ol_dump_works_latest.txt.gz ol_dump_works_latest
