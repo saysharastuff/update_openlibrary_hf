@@ -19,9 +19,6 @@ env:
 jobs:
   process-and-upload:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        dump: [authors, editions, works]
     steps:
       - uses: actions/checkout@v3
       - name: Setup Python
@@ -30,22 +27,22 @@ jobs:
           python-version: '3.10'
       - name: Install dependencies
         run: pip install pyarrow pandas huggingface_hub
-      - name: Check and download dump
-        run: |
-          python3 .github/scripts/ol_sync.py check-download
-        env:
-          MANIFEST: ${{ env.MANIFEST }}
-      - name: Split dump into chunks
-        if: ${{ env.SPLIT_DUMPS == 'true' }}
-        run: |
-          python3 .github/scripts/ol_sync.py split --dump ${{ matrix.dump }}
-      - name: Convert to Parquet
-        run: |
-          python3 .github/scripts/ol_sync.py convert --dump ${{ matrix.dump }}
-      - name: Upload Parquet and manifest
-        run: |
-          python3 .github/scripts/ol_sync.py upload --parquet-files $(ls *.parquet)
+      - name: Process all dumps sequentially
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_REPO: ${{ env.HF_REPO }}
           MANIFEST: ${{ env.MANIFEST }}
+        run: |
+          for dump in authors editions works; do
+            echo "Processing $dump"
+            python3 .github/scripts/ol_sync.py check-download
+            if [ "${{ env.SPLIT_DUMPS }}" = "true" ]; then
+              python3 .github/scripts/ol_sync.py split --dump $dump
+            fi
+            python3 .github/scripts/ol_sync.py convert --dump $dump
+            ls *.parquet > parquet_files.txt
+            if [ -s parquet_files.txt ]; then
+              python3 .github/scripts/ol_sync.py upload --parquet-files $(cat parquet_files.txt)
+            fi
+            rm -f *.parquet parquet_files.txt
+          done
