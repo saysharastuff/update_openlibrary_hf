@@ -17,28 +17,7 @@ env:
   SPLIT_DUMPS: 'true'
 
 jobs:
-  download:
-    runs-on: ubuntu-latest
-    outputs:
-      updated: ${{ steps.check.outputs.updated_any }}
-    steps:
-      - uses: actions/checkout@v3
-      - name: Setup cache for dumps and manifest
-        uses: actions/cache@v3
-        with:
-          path: |
-            *.txt.gz
-            ${{ env.MANIFEST }}
-          key: ${{ runner.os }}-ol-dumps-${{ hashFiles('*.txt.gz') }}
-      - name: Check for updates and download
-        id: check
-        run: python3 .github/scripts/ol_sync.py check-download
-        env:
-          MANIFEST: ${{ env.MANIFEST }}
-
-  convert:
-    needs: download
-    if: needs.download.outputs.updated == 'true'
+  process-and-upload:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -50,7 +29,12 @@ jobs:
         with:
           python-version: '3.10'
       - name: Install dependencies
-        run: pip install pyarrow pandas
+        run: pip install pyarrow pandas huggingface_hub
+      - name: Check and download dump
+        run: |
+          python3 .github/scripts/ol_sync.py check-download
+        env:
+          MANIFEST: ${{ env.MANIFEST }}
       - name: Split dump into chunks
         if: ${{ env.SPLIT_DUMPS == 'true' }}
         run: |
@@ -58,17 +42,9 @@ jobs:
       - name: Convert to Parquet
         run: |
           python3 .github/scripts/ol_sync.py convert --dump ${{ matrix.dump }}
-
-  upload:
-    needs: convert
-    if: needs.download.outputs.updated == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Setup HF CLI
-        run: pip install huggingface_hub
       - name: Upload Parquet and manifest
-        run: python3 .github/scripts/ol_sync.py upload
+        run: |
+          python3 .github/scripts/ol_sync.py upload --parquet-files $(ls *.parquet)
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_REPO: ${{ env.HF_REPO }}

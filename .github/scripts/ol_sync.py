@@ -88,6 +88,7 @@ def split_dump(dump):
     ]
     subprocess.check_call(cmd)
     print(f"Split {src} into chunks prefixed {prefix}")
+    os.remove(src)  # Delete original dump to save disk space
 
 
 def convert_dump(dump):
@@ -116,25 +117,24 @@ def convert_dump(dump):
                 parse_options=csv.ParseOptions(delimiter='\t')
             )
         pq.write_table(table, out_file)
+        os.remove(chunk)  # Delete chunk after conversion
     print(f"Finished converting dump '{dump}'")
 
 
-def upload_files():
+def upload_files(parquet_files):
     from huggingface_hub import HfApi
     api = HfApi()
     api.set_access_token(HF_TOKEN)
     api.create_repo(repo_id=HF_REPO, repo_type='dataset', exist_ok=True)
 
-    # Upload all .parquet files in cwd
-    for fname in sorted(os.listdir('.')):
-        if fname.endswith('.parquet'):
-            print(f"Uploading {fname} to {HF_REPO}")
-            api.upload_file(
-                path_or_fileobj=fname,
-                path_in_repo=fname,
-                repo_id=HF_REPO
-            )
-    # Upload manifest under metadata/
+    for fname in sorted(parquet_files):
+        print(f"Uploading {fname} to {HF_REPO}")
+        api.upload_file(
+            path_or_fileobj=fname,
+            path_in_repo=fname,
+            repo_id=HF_REPO
+        )
+        os.remove(fname)  # Delete Parquet file after upload
     print(f"Uploading manifest {MANIFEST}")
     api.upload_file(
         path_or_fileobj=MANIFEST,
@@ -155,7 +155,8 @@ def main():
     cp = sub.add_parser('convert', help='Convert dump chunks to Parquet')
     cp.add_argument('--dump', required=True, help='Name of the dump to convert')
 
-    sub.add_parser('upload', help='Upload Parquet and manifest')
+    up = sub.add_parser('upload', help='Upload Parquet and manifest')
+    up.add_argument('--parquet-files', nargs='+', help='List of Parquet files to upload')
 
     args = parser.parse_args()
     print(f"Executing command: {args.command}")  # Add logging
@@ -168,10 +169,11 @@ def main():
     elif args.command == 'convert':
         convert_dump(args.dump)
     elif args.command == 'upload':
-        upload_files()
+        upload_files(args.parquet_files)
     else:
         parser.print_help()
 
 
 if __name__ == '__main__':
+    main()
     main()
