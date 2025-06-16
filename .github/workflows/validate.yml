@@ -29,7 +29,7 @@ jobs:
 
       - name: Simulate fetch and upload (dry run)
         run: |
-          python fetch_and_upload.py --dry-run
+          python workflow/fetch_and_upload.py --dry-run
 
       - name: Create small sample JSON.gz
         run: |
@@ -40,7 +40,7 @@ jobs:
 
       - name: Validate parquet conversion on fixture (dry run)
         run: |
-          python convert_to_parquet.py test/test_data.json.gz test/test_output --dry-run
+          python workflow/convert_to_parquet.py test/test_data.json.gz test/test_output --dry-run
 
       - name: Report disk space
         run: df -h
