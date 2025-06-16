@@ -12,6 +12,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
+      - name: Restore manifest cache
+        uses: actions/cache@v3
+        with:
+          path: ol_sync_manifest.json
+          key: ol-manifest-${{ runner.os }}
+
       - name: Install dependencies
         run: |
           pip install pandas pyarrow huggingface_hub requests
@@ -30,3 +36,9 @@ jobs:
         run: |
           python workflow/fetch_and_upload.py --only ol_dump_works_latest.txt.gz
           python workflow/convert_to_parquet.py ol_dump_works_latest.txt.gz ol_dump_works_latest
+
+      - name: Save manifest cache
+        uses: actions/cache@v3
+        with:
+          path: ol_sync_manifest.json
+          key: ol-manifest-${{ runner.os }}

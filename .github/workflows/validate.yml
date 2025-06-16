@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   pull_request:
     branches: [main]
-    
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -14,33 +14,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
+      - name: Restore manifest cache
+        uses: actions/cache@v3
+        with:
+          path: ol_sync_manifest.json
+          key: ol-manifest-${{ runner.os }}
+
       - name: Install dependencies
-        run: |
-          pip install pandas pyarrow huggingface_hub requests
+        run: pip install pandas pyarrow huggingface_hub requests
 
-      - name: Check Hugging Face auth token
-        run: |
-          if [ -z "$HF_TOKEN" ]; then
-            echo "❌ HF_TOKEN not set"
-            exit 1
-          else
-            echo "✅ HF_TOKEN is set"
-          fi
-
-      - name: Simulate fetch and upload (dry run)
-        run: |
+      - name: Dry-run fetch and upload
+        run:
           python workflow/fetch_and_upload.py --dry-run
 
-      - name: Create small sample JSON.gz
+      - name: Create test fixture
         run: |
           mkdir -p test
           echo '{"type": "work", "title": "Test Work"}' > test/test_data.json
           echo '{"type": "edition", "title": "Test Edition"}' >> test/test_data.json
           gzip -f test/test_data.json
 
-      - name: Validate parquet conversion on fixture (dry run)
-        run: |
+      - name: Dry-run parquet conversion
+        run:
           python workflow/convert_to_parquet.py test/test_data.json.gz test/test_output --dry-run
-
-      - name: Report disk space
-        run: df -h
