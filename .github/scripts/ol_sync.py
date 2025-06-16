@@ -54,8 +54,10 @@ def check_download():
     for d in DUMPS:
         url = d['url']
         fname = d['file']
+        print(f"Checking dump: {fname} from {url}")  # Add logging
         headers = requests.head(url).headers
         last_mod = headers.get('Last-Modified')
+        print(f"Last-Modified header: {last_mod}")  # Add logging
         if mf.get(fname, {}).get('source_last_modified') != last_mod:
             print(f"Downloading {fname}...")
             r = requests.get(url, stream=True)
@@ -65,6 +67,8 @@ def check_download():
                     out_f.write(chunk)
             mf[fname] = {'source_last_modified': last_mod}
             updated_any = True
+        else:
+            print(f"No updates for {fname}.")  # Add logging
     save_manifest(mf)
     # GitHub Actions output
     print(f"::set-output name=updated_any::{str(updated_any).lower()}")
