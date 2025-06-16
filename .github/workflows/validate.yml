@@ -1,9 +1,10 @@
 name: Validate OpenLibrary Workflow
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main]
-
+    
 jobs:
   validate:
     runs-on: ubuntu-latest
