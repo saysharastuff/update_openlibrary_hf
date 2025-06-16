@@ -58,7 +58,7 @@ def check_download():
         headers = requests.head(url).headers
         last_mod = headers.get('Last-Modified')
         print(f"Last-Modified header: {last_mod}")  # Add logging
-        if mf.get(fname, {}).get('source_last_modified') != last_mod:
+        if last_mod is None or mf.get(fname, {}).get('source_last_modified') != last_mod:
             print(f"Downloading {fname}...")
             r = requests.get(url, stream=True)
             r.raise_for_status()
