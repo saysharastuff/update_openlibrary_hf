@@ -153,6 +153,8 @@ def main():
     sub.add_parser('upload', help='Upload Parquet and manifest')
 
     args = parser.parse_args()
+    print(f"Executing command: {args.command}")  # Add logging
+
     if args.command == 'check-download':
         check_download()
     elif args.command == 'split':
