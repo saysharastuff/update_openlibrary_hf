@@ -32,7 +32,6 @@ def save_manifest(data):
         json.dump(data, f, indent=2)
 
 def download_file(filename, url):
-    print("Downloading", filename, "from", url)
     with requests.get(url, stream=True) as r:
         with open(filename, "wb") as f:
             for chunk in r.iter_content(chunk_size=8192):
@@ -74,7 +73,7 @@ def upload_with_chunks(path, repo_path, dry_run=False):
                 os.remove(chunk_filename)
                 chunk_idx += 1
 
-def handle_download_and_upload(filename, url, manifest, dry_run):
+def handle_download_and_upload(filename, url, manifest, dry_run, keep):
     print(f"\n🌠 Checking {filename}")
     ol_modified = get_last_modified(url) if not dry_run else "<dry-run-time>"
     last_synced = manifest.get(filename, {}).get("source_last_modified")
@@ -86,8 +85,12 @@ def handle_download_and_upload(filename, url, manifest, dry_run):
     print(f"🚀 New version detected (OL: {ol_modified}, HF: {last_synced})")
     print(f"📥 Would download {filename} from {url}") if dry_run else download_file(filename, url)
     if not dry_run:
+        if os.path.exists(filename):
+            print(f"📝 {filename} exists before upload")
         upload_with_chunks(filename, filename, dry_run=dry_run)
-        os.remove(filename)
+        if os.path.exists(filename) and not keep:
+            print(f"🧹 Deleting {filename} after upload")
+            os.remove(filename)
 
     manifest[filename] = {
         "last_synced": datetime.utcnow().isoformat() + "Z",
@@ -112,6 +115,7 @@ def main():
     parser.add_argument("--only", help="Only process the named file")
     parser.add_argument("--upload-only", help="Only upload the named file")
     parser.add_argument("--dry-run", action="store_true", help="Print actions without performing network ops")
+    parser.add_argument("--keep", action="store_true", help="Keep downloaded files after upload")
     args = parser.parse_args()
 
     if not args.dry_run:
@@ -121,7 +125,7 @@ def main():
     if args.only:
         name = args.only.strip()
         if name in FILES:
-            handle_download_and_upload(name, FILES[name], manifest, dry_run=args.dry_run)
+            handle_download_and_upload(name, FILES[name], manifest, dry_run=args.dry_run, keep=args.keep)
         else:
             print(f"❌ Unknown file name: {name}")
     elif args.upload_only:
@@ -129,7 +133,7 @@ def main():
         handle_upload_only(name, manifest, dry_run=args.dry_run)
     else:
         for filename, url in FILES.items():
-            handle_download_and_upload(filename, url, manifest, dry_run=args.dry_run)
+            handle_download_and_upload(filename, url, manifest, dry_run=args.dry_run, keep=args.keep)
 
     if not args.dry_run:
         save_manifest(manifest)
