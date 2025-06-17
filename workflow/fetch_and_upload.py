@@ -28,7 +28,7 @@ def get_hf_last_modified(filename):
         info = api.dataset_info(HF_REPO_ID, token=HF_TOKEN)
         for sibling in info.siblings:
             if sibling.rfilename == filename:
-                return sibling.last_modified.strftime("%a, %d %b %Y %H:%M:%S GMT")
+                return sibling.lfs.get('lastModified', None) if hasattr(sibling, 'lfs') else None
     except HfHubHTTPError as e:
         print(f"⚠️ Could not retrieve HF metadata: {e}")
     return None
@@ -107,7 +107,8 @@ def upload_with_chunks(path, repo_path, dry_run=False):
                 chunk_idx += 1
 
 def handle_download_and_upload(filename, url, manifest, dry_run, keep):
-    print(f"🌠 Checking {filename}")
+    print(f"
+🌠 Checking {filename}")
     ol_modified = get_last_modified(url) if not dry_run else "<dry-run-time>"
     last_synced = manifest.get(filename, {}).get("source_last_modified")
 
