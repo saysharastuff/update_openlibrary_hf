@@ -136,17 +136,22 @@ def handle_download_and_upload(filename, url, manifest, dry_run, keep):
     }
 
 def handle_upload_only(filename, manifest, dry_run):
-    print(f"\n📤 Upload-only mode for {filename}")
+    print(f"
+📤 Upload-only mode for {filename}")
     if not os.path.exists(filename):
         print(f"❌ File {filename} not found for upload")
         return
+
     upload_with_chunks(filename, filename, dry_run=dry_run)
+
     if not dry_run:
-        os.remove(filename)
+        source_last_modified = manifest.get(filename, {}).get("source_last_modified", "manual-upload")
         manifest[filename] = {
             "last_synced": datetime.utcnow().isoformat() + "Z",
-            "source_last_modified": "manual-upload"
+            "source_last_modified": source_last_modified,
+            "converted": filename.endswith(".parquet") or filename.endswith(".parquet.gz")
         }
+        os.remove(filename)
 
 def main():
     parser = argparse.ArgumentParser()

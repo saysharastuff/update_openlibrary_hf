@@ -12,7 +12,7 @@ import argparse
 CHUNK_SIZE = 500_000  # Number of JSON lines per chunk
 
 
-def write_chunk(records: List[dict], chunk_index: int, output_prefix: str, dry_run: bool, manifest: dict):
+def write_chunk(records: List[dict], chunk_index: int, output_prefix: str, dry_run: bool, manifest: dict, source_last_modified: str):
     df = pd.DataFrame(records)
     if df.empty:
         return None
@@ -28,13 +28,14 @@ def write_chunk(records: List[dict], chunk_index: int, output_prefix: str, dry_r
     print(f"✅ Wrote {chunk_path} ({len(df)} rows)")
 
     print(f"📤 Uploading {chunk_path} via fetch_and_upload.py")
-    subprocess.run([sys.executable, "workflow/fetch_and_upload.py", "--upload-only", chunk_path])
+    subprocess.run([sys.executable, "workflow/fetch_and_upload.py", "--upload-only", chunk_path], check=True)
     os.remove(chunk_path)
     print(f"🧹 Deleted {chunk_path} after upload")
 
     manifest[chunk_path] = {
         "last_synced": pd.Timestamp.utcnow().isoformat() + "Z",
-        "source_last_modified": "converted"
+        "source_last_modified": source_last_modified,
+        "converted": True
     }
     return chunk_path
 
@@ -49,6 +50,10 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
         with open(manifest_path, "r") as f:
             manifest = json.load(f)
 
+    # Determine source_last_modified from manifest if available
+    source_entry = manifest.get(input_file, {})
+    source_last_modified = source_entry.get("source_last_modified", "<unknown>")
+
     with gzip.open(input_file, 'rt', encoding='utf-8', errors='ignore') as f:
         for i, line in enumerate(f):
             try:
@@ -58,12 +63,12 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
                 continue
 
             if len(chunk) >= CHUNK_SIZE:
-                write_chunk(chunk, chunk_index, output_prefix, dry_run, manifest)
+                write_chunk(chunk, chunk_index, output_prefix, dry_run, manifest, source_last_modified)
                 chunk = []
                 chunk_index += 1
 
     if chunk:
-        write_chunk(chunk, chunk_index, output_prefix, dry_run, manifest)
+        write_chunk(chunk, chunk_index, output_prefix, dry_run, manifest, source_last_modified)
 
     if not dry_run:
         with open(manifest_path, "w") as f:
