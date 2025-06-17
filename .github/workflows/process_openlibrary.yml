@@ -27,15 +27,24 @@ jobs:
           python workflow/fetch_and_upload.py --only ol_dump_authors_latest.txt.gz --keep
           python workflow/convert_to_parquet.py ol_dump_authors_latest.txt.gz ol_dump_authors_latest
 
+      - name: Cleanup authors dump
+        run: rm -f ol_dump_authors_latest.txt.gz
+
       - name: Process editions
         run: |
           python workflow/fetch_and_upload.py --only ol_dump_editions_latest.txt.gz --keep
           python workflow/convert_to_parquet.py ol_dump_editions_latest.txt.gz ol_dump_editions_latest
 
+      - name: Cleanup editions dump
+        run: rm -f ol_dump_editions_latest.txt.gz
+
       - name: Process works
         run: |
           python workflow/fetch_and_upload.py --only ol_dump_works_latest.txt.gz --keep
           python workflow/convert_to_parquet.py ol_dump_works_latest.txt.gz ol_dump_works_latest
+
+      - name: Cleanup works dump
+        run: rm -f ol_dump_works_latest.txt.gz
 
       - name: Save manifest cache
         uses: actions/cache@v3

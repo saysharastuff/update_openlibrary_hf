@@ -146,11 +146,7 @@ def main():
         )
     print("\n🌟 Sync complete." + (" (Dry run mode)" if args.dry_run else " Manifest updated and uploaded."))
 
-    # Post-conversion cleanup
-    if args.keep and args.only and not args.dry_run:
-        if os.path.exists(args.only):
-            print(f"🧹 Deleting {args.only} after parquet conversion")
-            os.remove(args.only)
+    
 
 if __name__ == "__main__":
     main()
