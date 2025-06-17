@@ -107,8 +107,7 @@ def upload_with_chunks(path, repo_path, dry_run=False):
                 chunk_idx += 1
 
 def handle_download_and_upload(filename, url, manifest, dry_run, keep):
-    print(f"
-🌠 Checking {filename}")
+    print(f"🌠 Checking {filename}")
     ol_modified = get_last_modified(url) if not dry_run else "<dry-run-time>"
     last_synced = manifest.get(filename, {}).get("source_last_modified")
 
