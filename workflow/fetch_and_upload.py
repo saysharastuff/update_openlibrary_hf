@@ -28,7 +28,9 @@ def get_hf_last_modified(filename):
         info = api.dataset_info(HF_REPO_ID, token=HF_TOKEN)
         for sibling in info.siblings:
             if sibling.rfilename == filename:
-                return sibling.lfs.get('lastModified', None) if hasattr(sibling, 'lfs') else None
+                lfs = getattr(sibling, "lfs", None)
+                if lfs and isinstance(lfs, dict) and "lastModified" in lfs:
+                    return lfs["lastModified"]
     except HfHubHTTPError as e:
         print(f"⚠️ Could not retrieve HF metadata: {e}")
     return None
