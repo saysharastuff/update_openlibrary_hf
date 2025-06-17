@@ -136,8 +136,7 @@ def handle_download_and_upload(filename, url, manifest, dry_run, keep):
     }
 
 def handle_upload_only(filename, manifest, dry_run):
-    print(f"
-📤 Upload-only mode for {filename}")
+    print(f"📤 Upload-only mode for {filename}")
     if not os.path.exists(filename):
         print(f"❌ File {filename} not found for upload")
         return
