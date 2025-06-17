@@ -32,6 +32,7 @@ def save_manifest(data):
         json.dump(data, f, indent=2)
 
 def download_file(filename, url):
+    print("Downloading", filename, "from", url)
     with requests.get(url, stream=True) as r:
         with open(filename, "wb") as f:
             for chunk in r.iter_content(chunk_size=8192):
