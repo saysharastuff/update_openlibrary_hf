@@ -107,20 +107,23 @@ def upload_with_chunks(path, repo_path, dry_run=False):
                 chunk_idx += 1
 
 def handle_download_and_upload(filename, url, manifest, dry_run, keep):
-    print(f"\n🌠 Checking {filename}")
+    print(f"
+🌠 Checking {filename}")
     ol_modified = get_last_modified(url) if not dry_run else "<dry-run-time>"
     last_synced = manifest.get(filename, {}).get("source_last_modified")
 
-    if not dry_run and last_synced == ol_modified:
+    if not dry_run and last_synced == ol_modified and os.path.exists(filename):
         print(f"✅ {filename} already up to date (OL: {ol_modified})")
         return
 
-    print(f"🚀 New version detected (OL: {ol_modified}, HF: {last_synced})")
+    print(f"🚀 New version detected or file missing (OL: {ol_modified}, HF: {last_synced})")
     if not dry_run:
-        reused = try_download_from_hf(filename, ol_modified)
-        if not reused:
-            print(f"⬇️ Downloading {filename} from OpenLibrary")
-            download_file(filename, url)
+        if not os.path.exists(filename):
+            print(f"⚠️ File {filename} missing locally. Attempting recovery.")
+            reused = try_download_from_hf(filename, ol_modified)
+            if not reused:
+                print(f"⬇️ Downloading {filename} from OpenLibrary")
+                download_file(filename, url)
         upload_with_chunks(filename, filename, dry_run=dry_run)
         if os.path.exists(filename) and not keep:
             print(f"🧹 Deleting {filename} after upload")
