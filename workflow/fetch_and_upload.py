@@ -4,7 +4,8 @@ import json
 import argparse
 import requests
 from datetime import datetime
-from huggingface_hub import HfApi, upload_file, login
+from huggingface_hub import HfApi, upload_file, hf_hub_download, login
+from huggingface_hub.utils import HfHubHTTPError
 
 HF_TOKEN = os.environ.get("HF_TOKEN")
 HF_REPO_ID = "sayshara/ol_dump"
@@ -21,6 +22,17 @@ def get_last_modified(url):
     r = requests.head(url, allow_redirects=True)
     return r.headers.get("Last-Modified")
 
+def get_hf_last_modified(filename):
+    try:
+        api = HfApi()
+        info = api.dataset_info(HF_REPO_ID, token=HF_TOKEN)
+        for sibling in info.siblings:
+            if sibling.rfilename == filename:
+                return sibling.last_modified.strftime("%a, %d %b %Y %H:%M:%S GMT")
+    except HfHubHTTPError as e:
+        print(f"⚠️ Could not retrieve HF metadata: {e}")
+    return None
+
 def load_manifest():
     if os.path.exists(MANIFEST_PATH):
         with open(MANIFEST_PATH, "r") as f:
@@ -36,6 +48,27 @@ def download_file(filename, url):
         with open(filename, "wb") as f:
             for chunk in r.iter_content(chunk_size=8192):
                 f.write(chunk)
+
+def try_download_from_hf(filename, ol_modified):
+    hf_modified = get_hf_last_modified(filename)
+    if hf_modified and hf_modified == ol_modified:
+        try:
+            print(f"🔁 Attempting to reuse {filename} from Hugging Face")
+            hf_hub_download(
+                repo_id=HF_REPO_ID,
+                filename=filename,
+                repo_type="dataset",
+                token=HF_TOKEN,
+                local_dir=".",
+                local_dir_use_symlinks=False
+            )
+            print(f"✅ Reused {filename} from Hugging Face")
+            return True
+        except Exception as e:
+            print(f"⚠️ Failed to reuse {filename} from Hugging Face: {e}")
+    else:
+        print(f"🔄 Hugging Face version outdated or missing (HF: {hf_modified}, OL: {ol_modified})")
+    return False
 
 def upload_with_chunks(path, repo_path, dry_run=False):
     api = HfApi()
@@ -83,10 +116,11 @@ def handle_download_and_upload(filename, url, manifest, dry_run, keep):
         return
 
     print(f"🚀 New version detected (OL: {ol_modified}, HF: {last_synced})")
-    print(f"📥 Would download {filename} from {url}") if dry_run else download_file(filename, url)
     if not dry_run:
-        if os.path.exists(filename):
-            print(f"📝 {filename} exists before upload")
+        reused = try_download_from_hf(filename, ol_modified)
+        if not reused:
+            print(f"⬇️ Downloading {filename} from OpenLibrary")
+            download_file(filename, url)
         upload_with_chunks(filename, filename, dry_run=dry_run)
         if os.path.exists(filename) and not keep:
             print(f"🧹 Deleting {filename} after upload")
@@ -145,8 +179,6 @@ def main():
             token=HF_TOKEN
         )
     print("\n🌟 Sync complete." + (" (Dry run mode)" if args.dry_run else " Manifest updated and uploaded."))
-
-    
 
 if __name__ == "__main__":
     main()
