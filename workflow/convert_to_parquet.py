@@ -56,10 +56,15 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
     source_entry = manifest.get(input_file, {})
     source_last_modified = source_entry.get("source_last_modified", "<unknown>")
 
+    total_lines = 0
+    parsed_records = 0
+
     with gzip.open(input_file, 'rt', encoding='utf-8', errors='ignore') as f:
         for i, line in enumerate(f):
+            total_lines += 1
             try:
                 record = json.loads(line)
+                parsed_records += 1
                 chunk.append(record)
             except json.JSONDecodeError:
                 continue
@@ -75,7 +80,8 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
     if not dry_run:
         save_manifest(manifest)
 
-    print(f"\n🌟 Finished {'simulated' if dry_run else ''} conversion into {chunk_index + 1} parquet chunks.")
+    print(f"📊 Processed {total_lines} lines — parsed {parsed_records} JSON objects.")
+    print(f"🌟 Finished {'simulated' if dry_run else ''} conversion into {chunk_index + 1} parquet chunks.")
 
 
 def main():
