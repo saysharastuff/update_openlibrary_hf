@@ -1,13 +1,14 @@
-import sys
 import os
+import sys
 import gzip
 import json
-import subprocess
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 from typing import List
 import argparse
+
+from fetch_and_upload import upload_with_chunks, load_manifest, save_manifest, login
 
 CHUNK_SIZE = 500_000  # Number of JSON lines per chunk
 
@@ -27,8 +28,8 @@ def write_chunk(records: List[dict], chunk_index: int, output_prefix: str, dry_r
     pq.write_table(table, chunk_path)
     print(f"✅ Wrote {chunk_path} ({len(df)} rows)")
 
-    print(f"📤 Uploading {chunk_path} via fetch_and_upload.py")
-    subprocess.run([sys.executable, "workflow/fetch_and_upload.py", "--upload-only", chunk_path], check=True)
+    login(token=os.environ["HF_TOKEN"])
+    upload_with_chunks(chunk_path, chunk_path)
     os.remove(chunk_path)
     print(f"🧹 Deleted {chunk_path} after upload")
 
@@ -50,7 +51,6 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
         with open(manifest_path, "r") as f:
             manifest = json.load(f)
 
-    # Determine source_last_modified from manifest if available
     source_entry = manifest.get(input_file, {})
     source_last_modified = source_entry.get("source_last_modified", "<unknown>")
 
@@ -71,8 +71,7 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
         write_chunk(chunk, chunk_index, output_prefix, dry_run, manifest, source_last_modified)
 
     if not dry_run:
-        with open(manifest_path, "w") as f:
-            json.dump(manifest, f, indent=2)
+        save_manifest(manifest)
 
     print(f"\n🌟 Finished {'simulated' if dry_run else ''} conversion into {chunk_index + 1} parquet chunks.")
 
