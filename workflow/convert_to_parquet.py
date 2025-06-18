@@ -12,6 +12,14 @@ from fetch_and_upload import upload_with_chunks, load_manifest, save_manifest, l
 
 CHUNK_SIZE = 500_000  # Number of JSON lines per chunk
 
+def normalize_record(record):
+    if "bio" in record:
+        if isinstance(record["bio"], dict):
+            record["bio"] = record["bio"].get("value", "")
+        elif not isinstance(record["bio"], str):
+            record["bio"] = str(record["bio"])
+    return record
+
 
 def write_chunk(records: List[dict], chunk_index: int, output_prefix: str, dry_run: bool, manifest: dict, source_last_modified: str):
     print(f"📦 Attempting to write chunk {chunk_index} with {len(records)} records")
@@ -65,7 +73,7 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
             total_lines += 1
             try:
                 json_part = line.strip().split('	')[-1]
-                record = json.loads(json_part)
+                record = normalize_record(json.loads(json_part))
                 parsed_records += 1
                 chunk.append(record)
             except json.JSONDecodeError:
