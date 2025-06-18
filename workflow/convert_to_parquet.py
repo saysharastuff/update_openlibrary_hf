@@ -14,8 +14,10 @@ CHUNK_SIZE = 500_000  # Number of JSON lines per chunk
 
 
 def write_chunk(records: List[dict], chunk_index: int, output_prefix: str, dry_run: bool, manifest: dict, source_last_modified: str):
+    print(f"📦 Attempting to write chunk {chunk_index} with {len(records)} records")
     df = pd.DataFrame(records)
     if df.empty:
+        print(f"⚠️ Skipping chunk {chunk_index} — no valid records.")
         return None
 
     chunk_path = f"{output_prefix}.part{chunk_index}.parquet"
