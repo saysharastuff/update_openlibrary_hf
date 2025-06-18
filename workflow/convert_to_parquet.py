@@ -64,7 +64,8 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
         for i, line in enumerate(f):
             total_lines += 1
             try:
-                record = json.loads(line)
+                json_part = line.strip().split('	')[-1]
+                record = json.loads(json_part)
                 parsed_records += 1
                 chunk.append(record)
             except json.JSONDecodeError:
