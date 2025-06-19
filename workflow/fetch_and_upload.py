@@ -80,7 +80,7 @@ def ensure_branch_exists(branch="backup/raw"):
         branches = api.list_repo_refs(repo_id=HF_REPO_ID, repo_type="dataset")
         if branch not in [b.name for b in branches.branches]:
             print(f"➕ Creating branch '{branch}' from 'main'")
-            api.create_branch(repo_id=HF_REPO_ID, repo_type="dataset", branch=branch, source="main", token=HF_TOKEN)
+            api.create_branch(repo_id=HF_REPO_ID, repo_type="dataset", branch=branch, token=HF_TOKEN)
     except Exception as e:
         print(f"⚠️ Failed to ensure branch '{branch}': {e}")
 
