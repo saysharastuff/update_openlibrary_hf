@@ -97,9 +97,9 @@ def try_download_from_hf(filename, ol_modified):
                 if attempt == max_retries:
                     return False
                 time.sleep(2 ** attempt)
-                else:
-                    print(f"🔄 Hugging Face version outdated or missing (HF: {hf_modified}, OL: {ol_modified})")
-                return False
+    else:
+        print(f"🔄 Hugging Face version outdated or missing (HF: {hf_modified}, OL: {ol_modified})")
+    return False
 
 def ensure_branch_exists(branch="backup/raw"):
     api = HfApi()
