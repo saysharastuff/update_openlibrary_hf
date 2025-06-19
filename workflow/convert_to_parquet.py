@@ -10,7 +10,7 @@ import argparse
 
 from fetch_and_upload import upload_with_chunks, load_manifest, save_manifest, login
 
-MAX_PARQUET_SIZE_BYTES = 1 * 1024 * 1024 * 1024  # Target max chunk size ~4GB
+MAX_PARQUET_SIZE_BYTES = 3 * 1024 * 1024 * 1024  # Target max chunk size ~4GB
 
 def normalize_record(record):
     if "bio" in record:
@@ -24,19 +24,22 @@ def normalize_record(record):
 def write_chunk(records: List[dict], chunk_index: int, output_prefix: str, dry_run: bool, manifest: dict, source_last_modified: str, input_file: str):
 
     print(f"📦 Attempting to write chunk {chunk_index} with {len(records)} records")
-    df = pd.DataFrame(records)
-    if df.empty:
+    if not records:
         print(f"⚠️ Skipping chunk {chunk_index} — no valid records.")
         return None
 
-    chunk_path = f"{output_prefix}.part{chunk_index}.parquet"
-
-    if dry_run:
-        print(f"[DRY RUN] Would write chunk {chunk_index} with {len(df)} rows to {chunk_path}")
-        return None
-
-    table = pa.Table.from_pandas(df)
-    pq.write_table(table, chunk_path, compression="snappy")
+    schema = None
+    with pq.ParquetWriter(chunk_path, schema, compression="snappy") as writer:
+        for i in range(0, len(records), 100_000):
+            batch = records[i:i+100_000]
+            df = pd.DataFrame(batch)
+            if df.empty:
+                continue
+            table = pa.Table.from_pandas(df)
+            if schema is None:
+                schema = table.schema
+                writer.schema = schema
+            writer.write_table(table)
     print(f"✅ Wrote {chunk_path} ({len(df)} rows)")
 
     login(token=os.environ["HF_TOKEN"])
