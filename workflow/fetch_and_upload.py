@@ -19,8 +19,17 @@ FILES = {
 }
 
 def get_last_modified(url):
-    r = requests.head(url, allow_redirects=True)
-    return r.headers.get("Last-Modified")
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            r = requests.head(url, allow_redirects=True, timeout=10)
+            r.raise_for_status()
+            return r.headers.get("Last-Modified")
+        except Exception as e:
+            print(f"⚠️ HEAD request attempt {attempt} failed: {e}")
+            if attempt == max_retries:
+                raise
+            time.sleep(2 ** attempt)
 
 def get_hf_last_modified(filename, revision="main"):
     try:
@@ -46,7 +55,20 @@ def save_manifest(data):
         json.dump(data, f, indent=2)
 
 def download_file(filename, url):
-    with requests.get(url, stream=True) as r:
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            with requests.get(url, stream=True, timeout=30) as r:
+                r.raise_for_status()
+                with open(filename, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+            return
+        except Exception as e:
+            print(f"⚠️ Download attempt {attempt} failed: {e}")
+            if attempt == max_retries:
+                raise
+            time.sleep(2 ** attempt)
         with open(filename, "wb") as f:
             for chunk in r.iter_content(chunk_size=8192):
                 f.write(chunk)
@@ -57,6 +79,9 @@ def try_download_from_hf(filename, ol_modified):
     if hf_modified and hf_modified == ol_modified:
         try:
             print(f"🔁 Attempting to reuse {filename} from Hugging Face")
+                max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
             hf_hub_download(
             repo_id=HF_REPO_ID,
             revision=revision,
@@ -66,6 +91,12 @@ def try_download_from_hf(filename, ol_modified):
                 local_dir=".",
                 local_dir_use_symlinks=False
             )
+            return True
+        except Exception as e:
+            print(f"⚠️ HF download attempt {attempt} failed: {e}")
+            if attempt == max_retries:
+                return False
+            time.sleep(2 ** attempt)
             print(f"✅ Reused {filename} from Hugging Face")
             return True
         except Exception as e:
@@ -92,6 +123,9 @@ def upload_with_chunks(path, repo_path, dry_run=False, branch=None):
         if not dry_run and (branch or path.endswith(".txt.gz")):
             ensure_branch_exists(branch or "backup/raw")
         if not dry_run:
+                max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
             upload_file(
             path_or_fileobj=path,
             path_in_repo=os.path.basename(repo_path),
@@ -101,6 +135,18 @@ def upload_with_chunks(path, repo_path, dry_run=False, branch=None):
                 repo_type="dataset",
                 token=HF_TOKEN
             )
+            break
+        except Exception as e:
+            print(f"⚠️ Manifest upload attempt {attempt} failed: {e}")
+            if attempt == max_retries:
+                raise
+            time.sleep(2 ** attempt)
+            break
+        except Exception as e:
+            print(f"⚠️ Upload attempt {attempt} failed: {e}")
+            if attempt == max_retries:
+                raise
+            time.sleep(2 ** attempt)
     else:
         print(f"⚠️ File {path} > 5GB, uploading in chunks")
         with open(path, "rb") as f:
@@ -146,25 +192,26 @@ def handle_download_and_upload(filename, url, manifest, dry_run, keep):
             print(f"🧹 Deleting {filename} after upload")
             os.remove(filename)
 
-    manifest[filename] = {
-        "last_synced": datetime.utcnow().isoformat() + "Z",
-        "source_last_modified": ol_modified
-    }
-
-def handle_upload_only(filename, manifest, dry_run):
-    print(f"📤 Upload-only mode for {filename}")
-    if not os.path.exists(filename):
-        print(f"❌ File {filename} not found for upload")
-        return
-
-    upload_with_chunks(filename, filename, dry_run=dry_run)
-
-    if not dry_run:
-        source_last_modified = manifest.get(filename, {}).get("source_last_modified", "manual-upload")
+    if filename not in manifest:
+        if filename not in manifest:
         manifest[filename] = {
             "last_synced": datetime.utcnow().isoformat() + "Z",
             "source_last_modified": source_last_modified,
-            "converted": filename.endswith(".parquet") or filename.endswith(".parquet.gz")
+            "converted_chunks": {
+                filename: {
+                    "last_synced": datetime.utcnow().isoformat() + "Z",
+                    "converted": True
+                }
+            }
+        }
+    else:
+        manifest[filename]["last_synced"] = datetime.utcnow().isoformat() + "Z"
+        manifest[filename]["source_last_modified"] = source_last_modified
+        if "converted_chunks" not in manifest[filename]:
+            manifest[filename]["converted_chunks"] = {}
+        manifest[filename]["converted_chunks"][filename] = {
+            "last_synced": datetime.utcnow().isoformat() + "Z",
+            "converted": True
         }
         os.remove(filename)
 
@@ -195,8 +242,11 @@ def main():
 
     if not args.dry_run:
         save_manifest(manifest)
-        upload_file(
-            path_or_fileobj=MANIFEST_PATH,
+            max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            upload_file(
+                path_or_fileobj=MANIFEST_PATH,
             path_in_repo=f"metadata/{MANIFEST_PATH}",
             repo_id=HF_REPO_ID,
             repo_type="dataset",

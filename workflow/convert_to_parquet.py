@@ -35,17 +35,31 @@ def write_chunk(records: List[dict], chunk_index: int, output_prefix: str, dry_r
         return None
 
     table = pa.Table.from_pandas(df)
-    pq.write_table(table, chunk_path)
+    pq.write_table(table, chunk_path, compression="snappy")
     print(f"✅ Wrote {chunk_path} ({len(df)} rows)")
 
     login(token=os.environ["HF_TOKEN"])
-    upload_with_chunks(chunk_path, chunk_path)
+    import time
+
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            upload_with_chunks(chunk_path, chunk_path)
+            break
+        except Exception as e:
+            print(f"❌ Upload attempt {attempt} failed: {e}")
+            if attempt == max_retries:
+                raise
+            time.sleep(2 ** attempt)  # exponential backoff
     os.remove(chunk_path)
     print(f"🧹 Deleted {chunk_path} after upload")
 
-    manifest[chunk_path] = {
+    parent_entry = manifest.setdefault(input_file, {})
+    parent_entry.setdefault("converted_chunks", {})
+    parent_entry["source_last_modified"] = source_last_modified
+    parent_entry["last_synced"] = pd.Timestamp.utcnow().isoformat() + "Z"
+    parent_entry["converted_chunks"][chunk_path] = {
         "last_synced": pd.Timestamp.utcnow().isoformat() + "Z",
-        "source_last_modified": source_last_modified,
         "converted": True
     }
     return chunk_path
@@ -67,7 +81,20 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
     total_lines = 0
     parsed_records = 0
 
-    with gzip.open(input_file, 'rt', encoding='utf-8', errors='ignore') as f:
+    import time
+
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            f = gzip.open(input_file, 'rt', encoding='utf-8', errors='ignore')
+            break
+        except Exception as e:
+            print(f"❌ Download/open attempt {attempt} failed: {e}")
+            if attempt == max_retries:
+                raise
+            time.sleep(2 ** attempt)  # exponential backoff
+
+    with f:
         bad_lines = []
         for i, line in enumerate(f):
             total_lines += 1
@@ -90,6 +117,30 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
         write_chunk(chunk, chunk_index, output_prefix, dry_run, manifest, source_last_modified)
 
     if not dry_run:
+        # 🧽 Delete orphaned parquet chunks from HF
+        known_chunks = set(manifest.get(input_file, {}).get("converted_chunks", {}).keys())
+        actual_chunks = {
+            f"{output_prefix}.part{i}.parquet" for i in range(chunk_index + 1)
+        }
+        orphaned = known_chunks - actual_chunks
+
+        if orphaned:
+            from huggingface_hub import HfApi
+            api = HfApi()
+            for filename in orphaned:
+                try:
+                    print(f"🗑️ Deleting orphaned chunk from HF: {filename}")
+                    api.delete_file(
+                        path_in_repo=filename,
+                        repo_id="sayshara/ol_dump",
+                        repo_type="dataset",
+                        revision="main",
+                        token=os.environ["HF_TOKEN"]
+                    )
+                    manifest[input_file]["converted_chunks"].pop(filename, None)
+                except Exception as e:
+                    print(f"⚠️ Failed to delete {filename}: {e}")
+
         save_manifest(manifest)
 
     print(f"📊 Processed {total_lines} lines — parsed {parsed_records} JSON objects.")
