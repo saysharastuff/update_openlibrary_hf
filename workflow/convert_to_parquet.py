@@ -10,7 +10,7 @@ import argparse
 
 from fetch_and_upload import upload_with_chunks, load_manifest, save_manifest, login
 
-CHUNK_SIZE = 5_000_000  # Number of JSON lines per chunk
+MAX_PARQUET_SIZE_BYTES = 4 * 1024 * 1024 * 1024  # Target max chunk size ~4GB
 
 def normalize_record(record):
     if "bio" in record:
@@ -21,7 +21,8 @@ def normalize_record(record):
     return record
 
 
-def write_chunk(records: List[dict], chunk_index: int, output_prefix: str, dry_run: bool, manifest: dict, source_last_modified: str):
+def write_chunk(records: List[dict], chunk_index: int, output_prefix: str, dry_run: bool, manifest: dict, source_last_modified: str, input_file: str):
+
     print(f"📦 Attempting to write chunk {chunk_index} with {len(records)} records")
     df = pd.DataFrame(records)
     if df.empty:
@@ -108,8 +109,18 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
                     bad_lines.append(line.strip())
                 continue
 
-            if len(chunk) >= CHUNK_SIZE:
-                write_chunk(chunk, chunk_index, output_prefix, dry_run, manifest, source_last_modified)
+                            # Estimate size using temp file
+                tmp_path = f"{output_prefix}.part{chunk_index}.parquet.tmp"
+                df = pd.DataFrame(chunk)
+                table = pa.Table.from_pandas(df)
+                pq.write_table(table, tmp_path, compression="snappy")
+                size = os.path.getsize(tmp_path)
+                os.remove(tmp_path)
+                if size >= MAX_PARQUET_SIZE_BYTES:
+                    write_chunk(chunk, chunk_index, output_prefix, dry_run, manifest, source_last_modified, input_file)
+                    chunk = []
+                    chunk_index += 1
+                write_chunk(chunk, chunk_index, output_prefix, dry_run, manifest, source_last_modified, input_file)
                 chunk = []
                 chunk_index += 1
 
