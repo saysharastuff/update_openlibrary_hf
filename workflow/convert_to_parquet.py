@@ -101,6 +101,8 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
     with f:
         bad_lines = []
         for i, line in enumerate(f):
+            if i % 1_000_000 == 0 and i > 0:
+                print(f"📈 Processed {i:,} lines, {parsed_records:,} parsed so far...")
             total_lines += 1
             try:
                 json_part = line.strip().split('	')[-1]
