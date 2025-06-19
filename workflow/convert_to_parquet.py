@@ -10,7 +10,7 @@ import argparse
 
 from fetch_and_upload import upload_with_chunks, load_manifest, save_manifest, login
 
-CHUNK_SIZE = 10_000_000  # Number of JSON lines per chunk
+CHUNK_SIZE = 5_000_000  # Number of JSON lines per chunk
 
 def normalize_record(record):
     if "bio" in record:
