@@ -22,10 +22,10 @@ def get_last_modified(url):
     r = requests.head(url, allow_redirects=True)
     return r.headers.get("Last-Modified")
 
-def get_hf_last_modified(filename):
+def get_hf_last_modified(filename, revision="main"):
     try:
         api = HfApi()
-        info = api.dataset_info(HF_REPO_ID, token=HF_TOKEN)
+        info = api.dataset_info(HF_REPO_ID, token=HF_TOKEN, revision=revision)
         for sibling in info.siblings:
             if sibling.rfilename == filename:
                 lfs = getattr(sibling, "lfs", None)
@@ -52,12 +52,14 @@ def download_file(filename, url):
                 f.write(chunk)
 
 def try_download_from_hf(filename, ol_modified):
-    hf_modified = get_hf_last_modified(filename)
+    revision = "backup/raw" if filename.endswith(".txt.gz") else "main"
+    hf_modified = get_hf_last_modified(filename, revision=revision)
     if hf_modified and hf_modified == ol_modified:
         try:
             print(f"🔁 Attempting to reuse {filename} from Hugging Face")
             hf_hub_download(
-                repo_id=HF_REPO_ID,
+            repo_id=HF_REPO_ID,
+            revision=revision,
                 filename=filename,
                 repo_type="dataset",
                 token=HF_TOKEN,
@@ -72,15 +74,17 @@ def try_download_from_hf(filename, ol_modified):
         print(f"🔄 Hugging Face version outdated or missing (HF: {hf_modified}, OL: {ol_modified})")
     return False
 
-def upload_with_chunks(path, repo_path, dry_run=False):
+def upload_with_chunks(path, repo_path, dry_run=False, branch=None):
     api = HfApi()
     file_size = os.path.getsize(path)
     if file_size <= CHUNK_SIZE_BYTES:
         print(f"📤 Uploading {path} to {repo_path} ({file_size / 1e9:.2f} GB)")
         if not dry_run:
             upload_file(
-                path_or_fileobj=path,
-                path_in_repo=repo_path,
+            path_or_fileobj=path,
+            path_in_repo=os.path.basename(repo_path),
+            commit_message="Upload to Hugging Face",
+            revision=branch or ("backup/raw" if path.endswith(".txt.gz") else "main"),
                 repo_id=HF_REPO_ID,
                 repo_type="dataset",
                 token=HF_TOKEN
@@ -125,7 +129,7 @@ def handle_download_and_upload(filename, url, manifest, dry_run, keep):
             if not reused:
                 print(f"⬇️ Downloading {filename} from OpenLibrary")
                 download_file(filename, url)
-        upload_with_chunks(filename, filename, dry_run=dry_run)
+        upload_with_chunks(filename, filename, dry_run=dry_run, branch=None)
         if os.path.exists(filename) and not keep:
             print(f"🧹 Deleting {filename} after upload")
             os.remove(filename)
