@@ -131,7 +131,7 @@ def upload_with_chunks(path, repo_path, dry_run=False, branch=None):
                         repo_type="dataset",
                         token=HF_TOKEN
                         )
-                        break
+                    break
                 except Exception as e:
                     print(f"⚠️ Manifest upload attempt {attempt} failed: {e}")
                     if attempt == max_retries:
