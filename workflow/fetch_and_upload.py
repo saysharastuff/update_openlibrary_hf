@@ -77,25 +77,29 @@ def try_download_from_hf(filename, ol_modified):
     revision = "backup/raw" if filename.endswith(".txt.gz") else "main"
     hf_modified = get_hf_last_modified(filename, revision=revision)
     if hf_modified and hf_modified == ol_modified:
-        try:
-            print(f"🔁 Attempting to reuse {filename} from Hugging Face")
-            max_retries = 3
-    for attempt in range(1, max_retries + 1):
-        try:
-            hf_hub_download(
-            repo_id=HF_REPO_ID,
-            revision=revision,
-                filename=filename,
-                repo_type="dataset",
-                token=HF_TOKEN,
-                local_dir=".",
-                local_dir_use_symlinks=False
-            )
-            return True
-        except Exception as e:
-            print(f"⚠️ HF download attempt {attempt} failed: {e}")
-            if attempt == max_retries:
-                return False
+        print(f"🔁 Attempting to reuse {filename} from Hugging Face")
+        max_retries = 3
+        for attempt in range(1, max_retries + 1):
+            try:
+                hf_hub_download(
+                    repo_id=HF_REPO_ID,
+                    revision=revision,
+                    filename=filename,
+                    repo_type="dataset",
+                    token=HF_TOKEN,
+                    local_dir=".",
+                    local_dir_use_symlinks=False
+                )
+                print(f"✅ Reused {filename} from Hugging Face")
+                return True
+            except Exception as e:
+                print(f"⚠️ HF download attempt {attempt} failed: {e}")
+                if attempt == max_retries:
+                    return False
+                time.sleep(2 ** attempt)
+    else:
+        print(f"🔄 Hugging Face version outdated or missing (HF: {hf_modified}, OL: {ol_modified})")
+    return False
             time.sleep(2 ** attempt)
             print(f"✅ Reused {filename} from Hugging Face")
             return True
@@ -134,7 +138,13 @@ def upload_with_chunks(path, repo_path, dry_run=False, branch=None):
                 repo_id=HF_REPO_ID,
                 repo_type="dataset",
                 token=HF_TOKEN
-            )
+                )
+                break
+            except Exception as e:
+                print(f"⚠️ Manifest upload attempt {attempt} failed: {e}")
+                if attempt == max_retries:
+                    raise
+                time.sleep(2 ** attempt)
             break
         except Exception as e:
             print(f"⚠️ Manifest upload attempt {attempt} failed: {e}")
@@ -242,10 +252,10 @@ def main():
 
     if not args.dry_run:
         save_manifest(manifest)
-            max_retries = 3
-    for attempt in range(1, max_retries + 1):
-        try:
-            upload_file(
+        max_retries = 3
+        for attempt in range(1, max_retries + 1):
+            try:
+                upload_file(
                 path_or_fileobj=MANIFEST_PATH,
             path_in_repo=f"metadata/{MANIFEST_PATH}",
             repo_id=HF_REPO_ID,
