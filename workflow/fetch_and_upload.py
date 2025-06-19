@@ -78,10 +78,11 @@ def download_file(filename, url):
             for chunk in r.iter_content(chunk_size=8192):
                 f.write(chunk)
 
-def try_download_from_hf(filename, ol_modified):
+def try_download_from_hf(filename, ol_modified, manifest=None):
     revision = "backup/raw" if filename.endswith(".txt.gz") else "main"
     hf_modified = get_hf_last_modified(filename, revision=revision)
-    if hf_modified and hf_modified == ol_modified or hf_modified == "<no-lfs>":
+    manifest_modified = manifest.get(filename, {}).get("source_last_modified") if manifest else None
+    if (hf_modified and hf_modified == ol_modified) or (not hf_modified and manifest_modified == ol_modified):
         print(f"🔁 Attempting to reuse {filename} from Hugging Face")
         max_retries = 3
         for attempt in range(1, max_retries + 1):
@@ -178,7 +179,7 @@ def handle_download_and_upload(filename, url, manifest, dry_run, keep):
     if not dry_run:
         if not os.path.exists(filename):
             print(f"⚠️ File {filename} missing locally. Attempting recovery.")
-            reused = try_download_from_hf(filename, ol_modified)
+            reused = try_download_from_hf(filename, ol_modified, manifest=manifest)
             if not reused:
                 print(f"⬇️ Downloading {filename} from OpenLibrary")
                 download_file(filename, url)
