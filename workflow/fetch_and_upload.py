@@ -79,7 +79,7 @@ def try_download_from_hf(filename, ol_modified):
     if hf_modified and hf_modified == ol_modified:
         try:
             print(f"🔁 Attempting to reuse {filename} from Hugging Face")
-                max_retries = 3
+            max_retries = 3
     for attempt in range(1, max_retries + 1):
         try:
             hf_hub_download(
