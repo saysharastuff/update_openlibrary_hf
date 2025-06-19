@@ -39,7 +39,8 @@ def write_chunk(records: List[dict], chunk_index: int, output_prefix: str, dry_r
             if schema is None:
                 schema = table.schema
                 writer.schema = schema
-            writer.write_table(table)
+            table = table.cast(schema)
+                    writer.write_table(table)
     print(f"✅ Wrote {chunk_path} ({len(df)} rows)")
 
     login(token=os.environ["HF_TOKEN"])
@@ -121,7 +122,8 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
                 df = pd.DataFrame(buffer)
                 table = pa.Table.from_pandas(df)
                 if writer is None:
-                    writer = pq.ParquetWriter(chunk_path, table.schema, compression="snappy")
+                    schema = table.schema
+                    writer = pq.ParquetWriter(chunk_path, schema, compression="snappy")
                 writer.write_table(table)
                 buffer.clear()
                 current_size = os.path.getsize(chunk_path) if os.path.exists(chunk_path) else 0
