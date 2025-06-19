@@ -35,11 +35,16 @@ def get_hf_last_modified(filename, revision="main"):
     try:
         api = HfApi()
         info = api.dataset_info(HF_REPO_ID, token=HF_TOKEN, revision=revision)
+        print(f"📁 Files in {revision}: {[s.rfilename for s in info.siblings]}")
         for sibling in info.siblings:
             if sibling.rfilename == filename:
+                print(f"📄 Found {filename} in {revision}")
                 lfs = getattr(sibling, "lfs", None)
-                if lfs and isinstance(lfs, dict) and "lastModified" in lfs:
-                    return lfs["lastModified"]
+                if lfs and isinstance(lfs, dict):
+                    return lfs.get("lastModified", None)
+                else:
+                    print(f"⚠️ No LFS metadata for {filename} in {revision}")
+                    return "<no-lfs>"
     except HfHubHTTPError as e:
         print(f"⚠️ Could not retrieve HF metadata: {e}")
     return None
@@ -76,7 +81,7 @@ def download_file(filename, url):
 def try_download_from_hf(filename, ol_modified):
     revision = "backup/raw" if filename.endswith(".txt.gz") else "main"
     hf_modified = get_hf_last_modified(filename, revision=revision)
-    if hf_modified and hf_modified == ol_modified:
+    if hf_modified and hf_modified == ol_modified or hf_modified == "<no-lfs>":
         print(f"🔁 Attempting to reuse {filename} from Hugging Face")
         max_retries = 3
         for attempt in range(1, max_retries + 1):

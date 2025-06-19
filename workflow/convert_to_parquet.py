@@ -10,7 +10,7 @@ import argparse
 
 from fetch_and_upload import upload_with_chunks, load_manifest, save_manifest, login
 
-MAX_PARQUET_SIZE_BYTES = 4 * 1024 * 1024 * 1024  # Target max chunk size ~4GB
+MAX_PARQUET_SIZE_BYTES = 3 * 1024 * 1024 * 1024  # Target max chunk size ~4GB
 
 def normalize_record(record):
     if "bio" in record:
