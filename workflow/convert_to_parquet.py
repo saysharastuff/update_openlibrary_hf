@@ -40,7 +40,6 @@ def write_chunk(records: List[dict], chunk_index: int, output_prefix: str, dry_r
                 schema = table.schema
                 writer.schema = schema
             table = table.cast(schema)
-                    writer.write_table(table)
     print(f"✅ Wrote {chunk_path} ({len(df)} rows)")
 
     login(token=os.environ["HF_TOKEN"])

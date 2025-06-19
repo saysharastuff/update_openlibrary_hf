@@ -85,7 +85,7 @@ def try_download_from_hf(filename, ol_modified, manifest=None):
     if hf_modified == ol_modified:
         print(f"🔁 Attempting to reuse {filename} from Hugging Face (via LFS match)")
         reuse_ok = True
-    elif hf_modified is None and manifest_modified == ol_modified:
+    elif hf_modified is None or hf_modified == "<no-lfs>" and manifest_modified == ol_modified:
         print(f"🔁 Attempting to reuse {filename} from Hugging Face (via manifest match)")
         reuse_ok = True
     else:
