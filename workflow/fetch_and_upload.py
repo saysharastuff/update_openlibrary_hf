@@ -82,7 +82,17 @@ def try_download_from_hf(filename, ol_modified, manifest=None):
     revision = "backup/raw" if filename.endswith(".txt.gz") else "main"
     hf_modified = get_hf_last_modified(filename, revision=revision)
     manifest_modified = manifest.get(filename, {}).get("source_last_modified") if manifest else None
-    if (hf_modified and hf_modified == ol_modified) or (not hf_modified and manifest_modified == ol_modified):
+    if hf_modified == ol_modified:
+        print(f"🔁 Attempting to reuse {filename} from Hugging Face (via LFS match)")
+        reuse_ok = True
+    elif hf_modified is None and manifest_modified == ol_modified:
+        print(f"🔁 Attempting to reuse {filename} from Hugging Face (via manifest match)")
+        reuse_ok = True
+    else:
+        print(f"🔄 Hugging Face version outdated or missing (HF: {hf_modified}, OL: {ol_modified})")
+        reuse_ok = False
+
+    if reuse_ok:
         print(f"🔁 Attempting to reuse {filename} from Hugging Face")
         max_retries = 3
         for attempt in range(1, max_retries + 1):

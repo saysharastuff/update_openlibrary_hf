@@ -70,8 +70,10 @@ def write_chunk(records: List[dict], chunk_index: int, output_prefix: str, dry_r
 
 
 def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool = False):
-    chunk = []
     chunk_index = 0
+    buffer = []
+    buffer_limit = 100_000
+    current_size = 0
     manifest_path = "ol_sync_manifest.json"
     manifest = {}
 
@@ -86,7 +88,6 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
     parsed_records = 0
 
     import time
-
     max_retries = 3
     for attempt in range(1, max_retries + 1):
         try:
@@ -96,10 +97,12 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
             print(f"❌ Download/open attempt {attempt} failed: {e}")
             if attempt == max_retries:
                 raise
-            time.sleep(2 ** attempt)  # exponential backoff
+            time.sleep(2 ** attempt)
 
     with f:
         bad_lines = []
+        writer = None
+        chunk_path = f"{output_prefix}.part{chunk_index}.parquet"
         for i, line in enumerate(f):
             if i % 1_000_000 == 0 and i > 0:
                 print(f"📈 Processed {i:,} lines, {parsed_records:,} parsed so far...")
@@ -108,25 +111,35 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
                 json_part = line.strip().split('	')[-1]
                 record = normalize_record(json.loads(json_part))
                 parsed_records += 1
-                chunk.append(record)
+                buffer.append(record)
             except json.JSONDecodeError:
                 if len(bad_lines) < 5:
                     bad_lines.append(line.strip())
                 continue
 
-                            # Estimate size using temp file
-                tmp_path = f"{output_prefix}.part{chunk_index}.parquet.tmp"
-                df = pd.DataFrame(chunk)
+            if len(buffer) >= buffer_limit:
+                df = pd.DataFrame(buffer)
                 table = pa.Table.from_pandas(df)
-                pq.write_table(table, tmp_path, compression="snappy")
-                size = os.path.getsize(tmp_path)
-                os.remove(tmp_path)
-                if size >= MAX_PARQUET_SIZE_BYTES:
-                    write_chunk(chunk, chunk_index, output_prefix, dry_run, manifest, source_last_modified, input_file)
-                    chunk = []
+                if writer is None:
+                    writer = pq.ParquetWriter(chunk_path, table.schema, compression="snappy")
+                writer.write_table(table)
+                buffer.clear()
+                current_size = os.path.getsize(chunk_path) if os.path.exists(chunk_path) else 0
+                if current_size >= MAX_PARQUET_SIZE_BYTES:
+                    writer.close()
+                    write_chunk([], chunk_index, output_prefix, dry_run, manifest, source_last_modified, input_file)
                     chunk_index += 1
-
-    if chunk:
+                    writer = None
+                    chunk_path = f"{output_prefix}.part{chunk_index}.parquet"
+        if buffer:
+            df = pd.DataFrame(buffer)
+            table = pa.Table.from_pandas(df)
+            if writer is None:
+                writer = pq.ParquetWriter(chunk_path, table.schema, compression="snappy")
+            writer.write_table(table)
+        if writer:
+            writer.close()
+            write_chunk([], chunk_index, output_prefix, dry_run, manifest, source_last_modified, input_file)
         write_chunk(chunk, chunk_index, output_prefix, dry_run, manifest, source_last_modified)
 
     if not dry_run:
