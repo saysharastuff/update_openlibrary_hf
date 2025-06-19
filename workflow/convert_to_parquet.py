@@ -10,7 +10,7 @@ import argparse
 
 from fetch_and_upload import upload_with_chunks, load_manifest, save_manifest, login
 
-MAX_PARQUET_SIZE_BYTES = 3 * 1024 * 1024 * 1024  # Target max chunk size ~4GB
+MAX_PARQUET_SIZE_BYTES = 1 * 1024 * 1024 * 1024  # Target max chunk size ~4GB
 
 def normalize_record(record):
     if "bio" in record:
@@ -123,9 +123,6 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
                     write_chunk(chunk, chunk_index, output_prefix, dry_run, manifest, source_last_modified, input_file)
                     chunk = []
                     chunk_index += 1
-                write_chunk(chunk, chunk_index, output_prefix, dry_run, manifest, source_last_modified, input_file)
-                chunk = []
-                chunk_index += 1
 
     if chunk:
         write_chunk(chunk, chunk_index, output_prefix, dry_run, manifest, source_last_modified)
