@@ -182,7 +182,8 @@ def handle_download_and_upload(filename, url, manifest, dry_run, keep):
             if not reused:
                 print(f"⬇️ Downloading {filename} from OpenLibrary")
                 download_file(filename, url)
-        upload_with_chunks(filename, filename, dry_run=dry_run, branch=None)
+        if not reused:
+            upload_with_chunks(filename, filename, dry_run=dry_run, branch=None)
         if os.path.exists(filename) and not keep:
             print(f"🧹 Deleting {filename} after upload")
             os.remove(filename)
