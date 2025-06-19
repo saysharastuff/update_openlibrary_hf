@@ -74,11 +74,23 @@ def try_download_from_hf(filename, ol_modified):
         print(f"🔄 Hugging Face version outdated or missing (HF: {hf_modified}, OL: {ol_modified})")
     return False
 
+def ensure_branch_exists(branch="backup/raw"):
+    api = HfApi()
+    try:
+        branches = api.list_repo_refs(repo_id=HF_REPO_ID, repo_type="dataset")
+        if branch not in [b.name for b in branches.branches]:
+            print(f"➕ Creating branch '{branch}' from 'main'")
+            api.create_branch(repo_id=HF_REPO_ID, repo_type="dataset", branch=branch, source="main", token=HF_TOKEN)
+    except Exception as e:
+        print(f"⚠️ Failed to ensure branch '{branch}': {e}")
+
 def upload_with_chunks(path, repo_path, dry_run=False, branch=None):
     api = HfApi()
     file_size = os.path.getsize(path)
     if file_size <= CHUNK_SIZE_BYTES:
         print(f"📤 Uploading {path} to {repo_path} ({file_size / 1e9:.2f} GB)")
+        if not dry_run and (branch or path.endswith(".txt.gz")):
+            ensure_branch_exists(branch or "backup/raw")
         if not dry_run:
             upload_file(
             path_or_fileobj=path,
