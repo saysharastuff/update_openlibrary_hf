@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import argparse
+import time
 import requests
 from datetime import datetime
 from huggingface_hub import HfApi, upload_file, hf_hub_download, login
@@ -192,7 +193,11 @@ def handle_download_and_upload(filename, url, manifest, dry_run, keep):
             reused = try_download_from_hf(filename, ol_modified, manifest=manifest)
             if not reused:
                 print(f"⬇️ Downloading {filename} from OpenLibrary")
-                download_file(filename, url)
+                try:
+                    download_file(filename, url)
+                except Exception as e:
+                    print(f"❌ Fallback download from OpenLibrary failed: {e}")
+                    return
         if not reused:
             upload_with_chunks(filename, filename, dry_run=dry_run, branch=None)
         if os.path.exists(filename) and not keep:
