@@ -119,6 +119,9 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
 
             if len(buffer) >= buffer_limit:
                 df = pd.DataFrame(buffer)
+                for name in schema.names:
+                    if name not in df.columns:
+                        df[name] = None
                 table = pa.Table.from_pandas(df)
                 if writer is None:
                     schema = table.schema
@@ -129,7 +132,12 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
                         print(f"⚠️ Skipping batch — missing fields not in schema: {missing_fields}")
                         buffer.clear()
                         continue
-                    table = table.select(schema.names).cast(schema)
+                    missing_fields = [name for name in schema.names if name not in table.schema.names]
+                    if missing_fields:
+                        print(f"⚠️ Skipping batch — missing fields not in schema: {missing_fields}")
+                        buffer.clear()
+                        continue
+                    table = table.select([name for name in schema.names if name in table.schema.names]).cast(schema)
                 writer.write_table(table)
                 buffer.clear()
                 current_size = os.path.getsize(chunk_path) if os.path.exists(chunk_path) else 0
@@ -154,6 +162,9 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
                     chunk_path = f"{output_prefix}.part{chunk_index}.parquet"
         if buffer:
             df = pd.DataFrame(buffer)
+            for name in schema.names:
+                if name not in df.columns:
+                    df[name] = None
             table = pa.Table.from_pandas(df)
             if writer is None:
                 schema = table.schema
