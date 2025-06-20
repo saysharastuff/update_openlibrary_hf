@@ -20,11 +20,18 @@ def normalize_record(record):
             record["bio"] = record["bio"].get("value", "")
         elif not isinstance(record["bio"], str):
             record["bio"] = str(record["bio"])
+
+    if "notes" in record:
+        if isinstance(record["notes"], dict):
+            record["notes"] = record["notes"].get("value", "")
+        elif not isinstance(record["notes"], str):
+            record["notes"] = str(record["notes"])
+
     return record
 
 
 def write_chunk(records: List[dict], chunk_index: int, output_prefix: str, dry_run: bool, manifest: dict, source_last_modified: str, input_file: str):
-    chunk_path = f"{output_prefix}.part{chunk_index}.parquet"
+    chunk_path = f"{output_prefix}.parquet" if chunk_index == 0 else f"{output_prefix}.part{chunk_index}.parquet"
 
     print(f"📦 Attempting to write chunk {chunk_index} with {len(records)} records")
     if not records:
@@ -197,7 +204,7 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
         # 🧽 Delete orphaned parquet chunks from HF
         known_chunks = set(manifest.get(input_file, {}).get("converted_chunks", {}).keys())
         actual_chunks = {
-            f"{output_prefix}.part{i}.parquet" for i in range(chunk_index + 1)
+            f"{output_prefix}.parquet" if i == 0 else f"{output_prefix}.part{i}.parquet" for i in range(chunk_index + 1)
         }
         orphaned = known_chunks - actual_chunks
 
