@@ -136,8 +136,8 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
             df = pd.DataFrame(buffer)
             table = pa.Table.from_pandas(df)
             if writer is None:
-            schema = table.schema
-            writer = pq.ParquetWriter(chunk_path, schema, compression="snappy")
+                schema = table.schema
+                writer = pq.ParquetWriter(chunk_path, schema, compression="snappy")
         else:
             table = table.cast(schema)
             writer.write_table(table)
