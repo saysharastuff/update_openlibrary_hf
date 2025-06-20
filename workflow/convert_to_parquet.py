@@ -118,7 +118,10 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
                 continue
 
             if len(buffer) >= buffer_limit:
-                df = pd.DataFrame(buffer)
+                if writer is None:
+                    df_sample = pd.DataFrame(buffer)
+                    schema = pa.Table.from_pandas(df_sample).schema
+                    df = pd.DataFrame(buffer)
                 for name in schema.names:
                     if name not in df.columns:
                         df[name] = None
