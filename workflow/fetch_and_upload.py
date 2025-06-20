@@ -200,7 +200,7 @@ def handle_download_and_upload(filename, url, manifest, dry_run, keep):
                     return
         if not reused:
             upload_with_chunks(filename, filename, dry_run=dry_run, branch=None)
-        if os.path.exists(filename) and not keep:
+        if os.path.exists(filename) and not keep and not filename.endswith(".txt.gz"):
             print(f"🧹 Deleting {filename} after upload")
             os.remove(filename)
 
