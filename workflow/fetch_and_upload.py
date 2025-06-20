@@ -1,4 +1,5 @@
 import os
+import time
 import sys
 import json
 import argparse
@@ -191,6 +192,9 @@ def handle_download_and_upload(filename, url, manifest, dry_run, keep):
         if not os.path.exists(filename):
             print(f"⚠️ File {filename} missing locally. Attempting recovery.")
             reused = try_download_from_hf(filename, ol_modified, manifest=manifest)
+            if reused:
+                print(f"✅ Reused {filename} from Hugging Face — skipping upload.")
+                return
             if not reused:
                 print(f"⬇️ Downloading {filename} from OpenLibrary")
                 try:

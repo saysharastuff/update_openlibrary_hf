@@ -27,6 +27,12 @@ def normalize_record(record):
         elif not isinstance(record["notes"], str):
             record["notes"] = str(record["notes"])
 
+    if "description" in record:
+        if isinstance(record["description"], dict):
+            record["description"] = record["description"].get("value", "")
+        elif not isinstance(record["description"], str):
+            record["description"] = str(record["description"])
+
     return record
 
 
@@ -202,7 +208,10 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
 
     if not dry_run:
         # 🧽 Delete orphaned parquet chunks from HF
-        known_chunks = set(manifest.get(input_file, {}).get("converted_chunks", {}).keys())
+        known_chunks = {
+            k for k in manifest.get(input_file, {}).get("converted_chunks", {}).keys()
+            if k.endswith(".parquet")
+        }
         actual_chunks = {
             f"{output_prefix}.parquet" if i == 0 else f"{output_prefix}.part{i}.parquet" for i in range(chunk_index + 1)
         }
