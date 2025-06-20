@@ -28,7 +28,7 @@ def write_chunk(records: List[dict], chunk_index: int, output_prefix: str, dry_r
         print(f"⚠️ Skipping chunk {chunk_index} — no valid records.")
         return None
 
-    schema = None
+    schema = pa.Schema.from_pandas(pd.DataFrame(records))
     with pq.ParquetWriter(chunk_path, schema, compression="snappy") as writer:
         for i in range(0, len(records), 100_000):
             batch = records[i:i+100_000]
@@ -36,10 +36,8 @@ def write_chunk(records: List[dict], chunk_index: int, output_prefix: str, dry_r
             if df.empty:
                 continue
             table = pa.Table.from_pandas(df)
-            if schema is None:
-                schema = table.schema
-                writer.schema = schema
             table = table.cast(schema)
+            writer.write_table(table)
     print(f"✅ Wrote {chunk_path} ({len(df)} rows)")
 
     login(token=os.environ["HF_TOKEN"])
