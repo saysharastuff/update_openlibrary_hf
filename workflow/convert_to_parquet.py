@@ -7,6 +7,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from typing import List
 import argparse
+import time
+from huggingface_hub import HfApi
 
 from fetch_and_upload import upload_with_chunks, load_manifest, save_manifest, login
 
@@ -42,8 +44,6 @@ def write_chunk(records: List[dict], chunk_index: int, output_prefix: str, dry_r
     print(f"✅ Wrote {chunk_path} ({len(df)} rows)")
 
     login(token=os.environ["HF_TOKEN"])
-    import time
-from huggingface_hub import HfApi
 
     max_retries = 3
     for attempt in range(1, max_retries + 1):
