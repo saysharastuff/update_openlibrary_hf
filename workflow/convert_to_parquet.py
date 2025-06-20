@@ -122,7 +122,7 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
                     schema = table.schema
                     writer = pq.ParquetWriter(chunk_path, schema, compression="snappy")
                 else:
-                    table = table.cast(schema)
+                    table = table.select(schema.names).cast(schema)
                 writer.write_table(table)
                 buffer.clear()
                 current_size = os.path.getsize(chunk_path) if os.path.exists(chunk_path) else 0
@@ -138,6 +138,8 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
             if writer is None:
                 schema = table.schema
                 writer = pq.ParquetWriter(chunk_path, schema, compression="snappy")
+            else:
+                table = table.select(schema.names).cast(schema)
         else:
             table = table.cast(schema)
             writer.write_table(table)
