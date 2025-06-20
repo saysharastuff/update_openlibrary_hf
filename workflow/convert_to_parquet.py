@@ -22,6 +22,7 @@ def normalize_record(record):
 
 
 def write_chunk(records: List[dict], chunk_index: int, output_prefix: str, dry_run: bool, manifest: dict, source_last_modified: str, input_file: str):
+    chunk_path = f"{output_prefix}.part{chunk_index}.parquet"
 
     print(f"📦 Attempting to write chunk {chunk_index} with {len(records)} records")
     if not records:
@@ -42,6 +43,7 @@ def write_chunk(records: List[dict], chunk_index: int, output_prefix: str, dry_r
 
     login(token=os.environ["HF_TOKEN"])
     import time
+from huggingface_hub import HfApi
 
     max_retries = 3
     for attempt in range(1, max_retries + 1):
@@ -122,13 +124,31 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
                     schema = table.schema
                     writer = pq.ParquetWriter(chunk_path, schema, compression="snappy")
                 else:
+                    missing_fields = [name for name in schema.names if name not in table.schema.names]
+                    if missing_fields:
+                        print(f"⚠️ Skipping batch — missing fields not in schema: {missing_fields}")
+                        buffer.clear()
+                        continue
                     table = table.select(schema.names).cast(schema)
                 writer.write_table(table)
                 buffer.clear()
                 current_size = os.path.getsize(chunk_path) if os.path.exists(chunk_path) else 0
                 if current_size >= MAX_PARQUET_SIZE_BYTES:
                     writer.close()
-                    write_chunk([], chunk_index, output_prefix, dry_run, manifest, source_last_modified, input_file)
+                    login(token=os.environ["HF_TOKEN"])
+                    upload_with_chunks(chunk_path, chunk_path)
+                    os.remove(chunk_path)
+                    print(f"🧹 Deleted {chunk_path} after upload")
+                    parent_entry = manifest.setdefault(input_file, {})
+                    if not dry_run:
+                        save_manifest(manifest)
+                    parent_entry.setdefault("converted_chunks", {})
+                    parent_entry["source_last_modified"] = source_last_modified
+                    parent_entry["last_synced"] = pd.Timestamp.utcnow().isoformat() + "Z"
+                    parent_entry["converted_chunks"][chunk_path] = {
+                        "last_synced": pd.Timestamp.utcnow().isoformat() + "Z",
+                        "converted": True
+                    }
                     chunk_index += 1
                     writer = None
                     chunk_path = f"{output_prefix}.part{chunk_index}.parquet"
@@ -140,13 +160,24 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
                 writer = pq.ParquetWriter(chunk_path, schema, compression="snappy")
             else:
                 table = table.select(schema.names).cast(schema)
-        else:
-            table = table.cast(schema)
-            writer.write_table(table)
+        if writer and not buffer:
+            # no final buffer, flush writer
+            writer.close()
         if writer:
             writer.close()
-            write_chunk([], chunk_index, output_prefix, dry_run, manifest, source_last_modified, input_file)
-        write_chunk(chunk, chunk_index, output_prefix, dry_run, manifest, source_last_modified)
+            login(token=os.environ["HF_TOKEN"])
+            upload_with_chunks(chunk_path, chunk_path)
+            os.remove(chunk_path)
+            print(f"🧹 Deleted {chunk_path} after upload")
+            parent_entry = manifest.setdefault(input_file, {})
+            parent_entry.setdefault("converted_chunks", {})
+            parent_entry["source_last_modified"] = source_last_modified
+            parent_entry["last_synced"] = pd.Timestamp.utcnow().isoformat() + "Z"
+            parent_entry["converted_chunks"][chunk_path] = {
+                "last_synced": pd.Timestamp.utcnow().isoformat() + "Z",
+                "converted": True
+            }
+        
 
     if not dry_run:
         # 🧽 Delete orphaned parquet chunks from HF
