@@ -3,8 +3,7 @@ name: OpenLibrary to HuggingFace
 on:
   workflow_dispatch:
   schedule:
-    # Every Monday at 09:00 UTC (≈ 4 AM US‑Central)
-    - cron: "0 9 * * 1"
+    - cron: "0 9 * * 1"  # Mondays 09:00 UTC ≈ 4 AM US‑Central
 
 jobs:
   process:
@@ -17,10 +16,10 @@ jobs:
             file: ol_dump_editions_latest.txt.gz
           - target: works
             file: ol_dump_works_latest.txt.gz
-      max-parallel: 3  # run all three concurrently; adjust if desired
+      max-parallel: 3
 
     runs-on: ubuntu-latest
-    timeout-minutes: 360  # generous safety margin for very large dumps
+    timeout-minutes: 360
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       HF_REPO_ID: sayshara/openlibrary
@@ -35,23 +34,22 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Restore sync manifest cache
+      - name: Restore manifest cache
         uses: actions/cache@v3
         with:
           path: ol_sync_manifest.json
           key: ol-manifest-${{ runner.os }}
 
-      - name: Install dependencies
-        run: |
-          pip install -U pandas pyarrow huggingface_hub requests
+      - name: Install deps
+        run: pip install -U pandas pyarrow huggingface_hub requests
 
       - name: Process ${{ matrix.target }} dump
         run: |
-          python openlibrary_python.py fetch --only ${{ matrix.file }} --keep
-          python openlibrary_python.py convert ${{ matrix.file }}
+          python openlibrary_pipeline.py fetch --only ${{ matrix.file }} --keep
+          python openlibrary_pipeline.py convert ${{ matrix.file }}
           rm -f ${{ matrix.file }}*
 
-      - name: Save sync manifest cache (last writer wins)
+      - name: Save manifest cache (last writer wins)
         uses: actions/cache@v3
         with:
           path: ol_sync_manifest.json
