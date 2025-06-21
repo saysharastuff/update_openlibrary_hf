@@ -163,7 +163,7 @@ def upload_with_chunks(path, repo_path, dry_run=False, branch=None):
                 chunk = f.read(CHUNK_SIZE_BYTES)
                 if not chunk:
                     break
-                chunk_filename = f"{repo_path}.part{chunk_idx}"
+                chunk_filename = f"{repo_path}" if chunk_idx == 0 and file_size <= CHUNK_SIZE_BYTES else f"{repo_path}.part{chunk_idx}"
                 with open(chunk_filename, "wb") as cf:
                     cf.write(chunk)
                 print(f"📤 Uploading chunk {chunk_idx}: {chunk_filename}")

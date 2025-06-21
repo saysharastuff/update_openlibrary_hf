@@ -37,7 +37,7 @@ def normalize_record(record):
 
 
 def write_chunk(records: List[dict], chunk_index: int, output_prefix: str, dry_run: bool, manifest: dict, source_last_modified: str, input_file: str):
-    chunk_path = f"{output_prefix}.parquet" if chunk_index == 0 else f"{output_prefix}.part{chunk_index}.parquet"
+    chunk_path = f"{output_prefix}.parquet" if chunk_index == 0 and chunk_index == 0 else f"{output_prefix}.part{chunk_index}.parquet"
 
     print(f"📦 Attempting to write chunk {chunk_index} with {len(records)} records")
     if not records:
@@ -75,7 +75,8 @@ def write_chunk(records: List[dict], chunk_index: int, output_prefix: str, dry_r
     parent_entry.setdefault("converted_chunks", {})
     parent_entry["source_last_modified"] = source_last_modified
     parent_entry["last_synced"] = pd.Timestamp.utcnow().isoformat() + "Z"
-    parent_entry["converted_chunks"][chunk_path] = {
+    final_key = f"{output_prefix}.parquet" if chunk_index == 0 else chunk_path
+    parent_entry["converted_chunks"][final_key] = {
         "last_synced": pd.Timestamp.utcnow().isoformat() + "Z",
         "converted": True
     }
