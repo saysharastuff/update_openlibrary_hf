@@ -187,23 +187,52 @@ def convert_cli(args: argparse.Namespace):
     login(token=HF_TOKEN)
     cfg = (args.config or re.search(r"ol_dump_(\w+)_latest", args.input_file).group(1)).lower()
 
-    idx = 0  # Parquet file counter
-    parsed = 0
+    idx = 0                   # part counter
+    parsed = 0                # line counter
+    writer: pq.ParquetWriter | None = None
+    writer_cols: list[str] | None = None
+    cur_size = 0              # uncompressed bytes in current part
+    buf: list[dict] = []
 
     def out_path(i: int) -> str:
         return f"{cfg}_{i}.parquet"
 
-    writer: pq.ParquetWriter | None = None
-    cur_size = 0  # uncompressed size of tables written so far
-    buf: List[dict] = []
+    def start_writer(table: pa.Table):
+        nonlocal writer, writer_cols
+        writer_cols = table.schema.names            # fixed order for this part
+        return pq.ParquetWriter(out_path(idx), table.schema, compression="snappy")
+
+    def close_and_upload():
+        nonlocal writer, writer_cols, cur_size, idx
+        if writer:
+            writer.close()
+            if not args.dry_run:
+                upload_with_chunks(out_path(idx), f"{cfg}/{out_path(idx)}")
+            os.remove(out_path(idx))
+            idx += 1
+            writer = None
+            writer_cols = None
+            cur_size = 0
 
     def flush_batch():
         nonlocal writer, cur_size, buf
         if not buf:
             return
-        table = pa.Table.from_pandas(pd.DataFrame(buf))
-        if writer is None:
-            writer = pq.ParquetWriter(out_path(idx), table.schema, compression="snappy")
+        df = pd.DataFrame(buf)
+
+        # Align to existing schema
+        if writer_cols is not None:
+            for col in writer_cols:
+                if col not in df:
+                    df[col] = None
+            df = df[writer_cols]
+        table = pa.Table.from_pandas(df)
+
+        # If writer absent OR new columns appeared, start a new part
+        if writer is None or table.schema.names != writer_cols:
+            close_and_upload()
+            writer = start_writer(table)
+
         writer.write_table(table)
         cur_size += table.nbytes
         buf.clear()
@@ -220,25 +249,14 @@ def convert_cli(args: argparse.Namespace):
             if len(buf) >= BATCH_ROWS:
                 flush_batch()
 
-            # if current Parquet file grew beyond target, close & upload
             if writer and cur_size >= TARGET_BYTES:
-                writer.close()
-                if not args.dry_run:
-                    upload_with_chunks(out_path(idx), f"{cfg}/{out_path(idx)}")
-                os.remove(out_path(idx))
-                idx += 1
-                writer = None
-                cur_size = 0
+                close_and_upload()
 
-        # final flush
         flush_batch()
-        if writer:
-            writer.close()
-            if not args.dry_run:
-                upload_with_chunks(out_path(idx), f"{cfg}/{out_path(idx)}")
-            os.remove(out_path(idx))
+        close_and_upload()
 
-    print(f"📊 Parsed {parsed:,} lines into {idx + 1}  ≤3 GB Parquet part(s)")
+    print(f"📊 Parsed {parsed:,} lines into {idx} ≤3 GB Parquet part(s)")
+
 
 # ────────────────────────────────────────────────────────────────
 # ENTRY POINT
