@@ -15,24 +15,15 @@ from fetch_and_upload import upload_with_chunks, load_manifest, save_manifest, l
 MAX_PARQUET_SIZE_BYTES = 1 * 1024 * 1024 * 1024  # Target max chunk size ~4GB
 
 def normalize_record(record):
-    if "bio" in record:
-        if isinstance(record["bio"], dict):
-            record["bio"] = record["bio"].get("value", "")
-        elif not isinstance(record["bio"], str):
-            record["bio"] = str(record["bio"])
-
-    if "notes" in record:
-        if isinstance(record["notes"], dict):
-            record["notes"] = record["notes"].get("value", "")
-        elif not isinstance(record["notes"], str):
-            record["notes"] = str(record["notes"])
-
-    if "description" in record:
-        if isinstance(record["description"], dict):
-            record["description"] = record["description"].get("value", "")
-        elif not isinstance(record["description"], str):
-            record["description"] = str(record["description"])
-
+    # Recursively convert any dicts or lists to JSON strings to ensure schema consistency
+    for key, value in record.items():
+        if isinstance(value, (dict, list)):
+            try:
+                record[key] = json.dumps(value)
+            except Exception:
+                record[key] = str(value)
+        elif not isinstance(value, (str, int, float, bool)) and value is not None:
+            record[key] = str(value)
     return record
 
 
@@ -207,35 +198,7 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
             }
         
 
-    if not dry_run:
-        # 🧽 Delete orphaned parquet chunks from HF
-        known_chunks = {
-            k for k in manifest.get(input_file, {}).get("converted_chunks", {}).keys()
-            if k.endswith(".parquet")
-        }
-        actual_chunks = {
-            f"{output_prefix}.parquet" if i == 0 else f"{output_prefix}.part{i}.parquet" for i in range(chunk_index + 1)
-        }
-        orphaned = known_chunks - actual_chunks
-
-        if orphaned:
-            from huggingface_hub import HfApi
-            api = HfApi()
-            for filename in orphaned:
-                try:
-                    print(f"🗑️ Deleting orphaned chunk from HF: {filename}")
-                    api.delete_file(
-                        path_in_repo=filename,
-                        repo_id="sayshara/ol_dump",
-                        repo_type="dataset",
-                        revision="main",
-                        token=os.environ["HF_TOKEN"]
-                    )
-                    manifest[input_file]["converted_chunks"].pop(filename, None)
-                except Exception as e:
-                    print(f"⚠️ Failed to delete {filename}: {e}")
-
-        save_manifest(manifest)
+    
 
     print(f"📊 Processed {total_lines} lines — parsed {parsed_records} JSON objects.")
     if bad_lines:
