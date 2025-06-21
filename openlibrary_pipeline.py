@@ -33,7 +33,7 @@ HF_REPO_ID: str = os.getenv("HF_REPO_ID", "sayshara/openlibrary")
 MANIFEST_PATH = "ol_sync_manifest.json"
 CHUNK_SIZE_BYTES = 5 * 1024 * 1024 * 1024  # 5 GB – chunked upload threshold
 
-TARGET_BYTES = 3 * 1024 ** 3   # 3 GB raw JSON per Parquet file
+TARGET_BYTES = 5 * 1024 ** 3   # 3 GB raw JSON per Parquet file
 BATCH_ROWS   = 50_000          # Arrow/Pandas rows kept in memory before writing
 
 FILES: Dict[str, str] = {
