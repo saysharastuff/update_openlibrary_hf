@@ -72,17 +72,21 @@ def get_last_modified(url: str) -> str | None:
             time.sleep(2 ** attempt)
     return None
 
+
 def ensure_branch_exists(branch: str = "backup/raw") -> None:
+    """Create *branch* if it isn’t already present.
+    Safe to call repeatedly: the Hub SDK’s *exist_ok* flag avoids 409 errors.
+    """
     HfApi().create_branch(
         repo_id=HF_REPO_ID,
         repo_type="dataset",
         branch=branch,
         token=HF_TOKEN,
-        exist_ok=True,   # quietly skips if branch already exists
+        exist_ok=True,  # 👈 quietly skip if branch already exists
     )
 
 
-def upload_with_chunks(local_path: str | Path, repo_path: str, *, dry: bool = False, branch: str | None = None):
+def upload_with_chunks(local_path: str | Path, repo_path: str, *, dry: bool = False, branch: str | None = None):(local_path: str | Path, repo_path: str, *, dry: bool = False, branch: str | None = None):
     local_path = str(local_path)
     size = os.path.getsize(local_path)
     revision = branch or ("backup/raw" if local_path.endswith(".txt.gz") else "main")
@@ -209,7 +213,7 @@ def convert_cli(args: argparse.Namespace):
     login(token=HF_TOKEN)
     cfg = (args.config or re.search(r"ol_dump_(\w+)_latest", args.input_file).group(1)).lower()
 
-    buf, idx, parsed = [], 0, 0
+    buf, idx, parsed, buf_bytes = [], 0, 0, 0
     with gzip.open(args.input_file, "rt", encoding="utf‑8", errors="ignore") as fh:
         for line in fh:
             try:
