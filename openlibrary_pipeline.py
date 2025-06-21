@@ -233,6 +233,9 @@ def convert_cli(args: argparse.Namespace):
             close_and_upload()
             writer = start_writer(table)
 
+        # Cast to the writer schema to ensure Arrow types match (avoids NULL vs STRING issues)
+        if writer is not None:
+            table = table.cast(writer.schema)
         writer.write_table(table)
         cur_size += table.nbytes
         buf.clear()
