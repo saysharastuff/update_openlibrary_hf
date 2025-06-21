@@ -39,7 +39,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import requests
-from huggingface_hub import HfApi, login, upload_file, HfHubHTTPError
+from huggingface_hub import HfApi, login, upload_file
 
 # ────────────────────────────────────────────────────────────────
 # GLOBAL CONSTANTS
@@ -73,25 +73,13 @@ def get_last_modified(url: str) -> str | None:
     return None
 
 def ensure_branch_exists(branch: str = "backup/raw") -> None:
-    """
-    Create *branch* in the dataset repo if it doesn't exist.
-    Safe for concurrent calls: 409 “already exists” is ignored.
-    """
-    api = HfApi()
-    try:
-        api.create_branch(
-            repo_id=HF_REPO_ID,
-            repo_type="dataset",
-            branch=branch,
-            token=HF_TOKEN,
-            exist_ok=True,   # 👈 built-in ignore-if-exists flag
-        )
-    except HfHubHTTPError as e:
-        if e.response and e.response.status_code == 409:
-            # another job created it milliseconds before us
-            return
-        raise
-
+    HfApi().create_branch(
+        repo_id=HF_REPO_ID,
+        repo_type="dataset",
+        branch=branch,
+        token=HF_TOKEN,
+        exist_ok=True,   # quietly skips if branch already exists
+    )
 
 
 def upload_with_chunks(local_path: str | Path, repo_path: str, *, dry: bool = False, branch: str | None = None):
