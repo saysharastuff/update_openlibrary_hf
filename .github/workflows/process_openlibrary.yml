@@ -3,18 +3,30 @@ name: OpenLibrary to HuggingFace
 on:
   workflow_dispatch:
   schedule:
+    # Every Monday at 09:00 UTC (≈ 4 AM US‑Central)
     - cron: "0 9 * * 1"
 
 jobs:
   process:
     runs-on: ubuntu-latest
+    timeout-minutes: 360  # safety for very large dumps
     env:
+      # Required for huggingface_hub CLI / SDK auth
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      # Override if you ever need to push to a fork
+      HF_REPO_ID: sayshara/openlibrary
+
     steps:
-      - name: Checkout
+      - name: Checkout repo
         uses: actions/checkout@v3
 
-      - name: Restore manifest cache
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Restore sync manifest cache
         uses: actions/cache@v3
         with:
           path: ol_sync_manifest.json
@@ -22,33 +34,30 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pandas pyarrow huggingface_hub requests
+          pip install -U pandas pyarrow huggingface_hub requests
 
-      - name: Process authors
+      # -------------------- AUTHORS --------------------
+      - name: Process authors dump
         run: |
           python workflow/fetch_and_upload.py --only ol_dump_authors_latest.txt.gz --keep
-          python workflow/convert_to_parquet.py ol_dump_authors_latest.txt.gz ol_dump_authors_latest
+          python workflow/convert_to_parquet.py ol_dump_authors_latest.txt.gz
+          rm -f ol_dump_authors_latest.txt.gz*
 
-      - name: Cleanup authors dump
-        run: rm -f ol_dump_authors_latest.txt.gz*
-
-      - name: Process editions
+      # -------------------- EDITIONS -------------------
+      - name: Process editions dump
         run: |
           python workflow/fetch_and_upload.py --only ol_dump_editions_latest.txt.gz --keep
-          python workflow/convert_to_parquet.py ol_dump_editions_latest.txt.gz ol_dump_editions_latest
+          python workflow/convert_to_parquet.py ol_dump_editions_latest.txt.gz
+          rm -f ol_dump_editions_latest.txt.gz*
 
-      - name: Cleanup editions dump
-        run: rm -f ol_dump_editions_latest.txt.gz*
-
-      - name: Process works
+      # -------------------- WORKS ----------------------
+      - name: Process works dump
         run: |
           python workflow/fetch_and_upload.py --only ol_dump_works_latest.txt.gz --keep
-          python workflow/convert_to_parquet.py ol_dump_works_latest.txt.gz ol_dump_works_latest
+          python workflow/convert_to_parquet.py ol_dump_works_latest.txt.gz
+          rm -f ol_dump_works_latest.txt.gz*
 
-      - name: Cleanup works dump
-        run: rm -f ol_dump_works_latest.txt.gz*
-
-      - name: Save manifest cache
+      - name: Save sync manifest cache
         uses: actions/cache@v3
         with:
           path: ol_sync_manifest.json
