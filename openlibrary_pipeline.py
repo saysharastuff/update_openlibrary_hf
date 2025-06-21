@@ -5,22 +5,6 @@ Sub‑commands
 ------------
 fetch   : download the latest raw OpenLibrary dump(s) and archive them on the Hub (branch *backup/raw*)
 convert : convert a given dump to snappy‑compressed Parquet and upload it under authors/, editions/, or works/
-
-Examples
-~~~~~~~~
-# archive & convert a single file (authors)
-python openlibrary_pipeline.py fetch  --only ol_dump_authors_latest.txt.gz --keep
-python openlibrary_pipeline.py convert ol_dump_authors_latest.txt.gz
-
-# full refresh for all three dumps in one go
-python openlibrary_pipeline.py fetch
-python openlibrary_pipeline.py convert ol_dump_authors_latest.txt.gz
-python openlibrary_pipeline.py convert ol_dump_editions_latest.txt.gz
-python openlibrary_pipeline.py convert ol_dump_works_latest.txt.gz
-
-# (CI) two‑stage stream: fetch + convert inside the same runner
-python openlibrary_pipeline.py fetch  --only "$FILE" --keep
-python openlibrary_pipeline.py convert "$FILE"
 """
 
 from __future__ import annotations
@@ -47,7 +31,8 @@ from huggingface_hub import HfApi, login, upload_file
 HF_TOKEN: str | None = os.getenv("HF_TOKEN")
 HF_REPO_ID: str = os.getenv("HF_REPO_ID", "sayshara/openlibrary")
 MANIFEST_PATH = "ol_sync_manifest.json"
-CHUNK_SIZE_BYTES = 5 * 1024 * 1024 * 1024  # 5 GB
+CHUNK_SIZE_BYTES = 5 * 1024 * 1024 * 1024  # 5 GB
+TARGET_BYTES = 3 * 1024 ** 3               # 3 GB raw JSON per Parquet chunk
 
 FILES: Dict[str, str] = {
     "ol_dump_authors_latest.txt.gz": "https://openlibrary.org/data/ol_dump_authors_latest.txt.gz",
@@ -74,15 +59,12 @@ def get_last_modified(url: str) -> str | None:
 
 
 def ensure_branch_exists(branch: str = "backup/raw") -> None:
-    """Create *branch* if it isn’t already present.
-    Safe to call repeatedly: the Hub SDK’s *exist_ok* flag avoids 409 errors.
-    """
     HfApi().create_branch(
         repo_id=HF_REPO_ID,
         repo_type="dataset",
         branch=branch,
         token=HF_TOKEN,
-        exist_ok=True,  # 👈 quietly skip if branch already exists
+        exist_ok=True,  # quietly ignore if already exists
     )
 
 
@@ -149,7 +131,6 @@ def _download_upload(name: str, url: str, manifest: Dict[str, dict], *, dry: boo
         print(f"✅ {name} already up‑to‑date")
         return
 
-    # Download if necessary
     if not Path(name).exists():
         print(f"⬇️ Downloading {name}")
         with requests.get(url, stream=True) as r:
@@ -158,7 +139,7 @@ def _download_upload(name: str, url: str, manifest: Dict[str, dict], *, dry: boo
                 for chunk in r.iter_content(chunk_size=8192):
                     fh.write(chunk)
 
-    upload_with_chunks(name, name, dry=dry)  # backup/raw branch chosen automatically
+    upload_with_chunks(name, name, dry=dry)
 
     manifest[name] = {
         "last_synced": datetime.utcnow().isoformat() + "Z",
@@ -175,7 +156,6 @@ def fetch_cli(args: argparse.Namespace):
 
     manifest = load_manifest()
     targets = [args.only] if args.only else list(FILES.keys())
-
     for t in targets:
         if t not in FILES:
             print(f"❌ Unknown dump {t}")
@@ -187,7 +167,7 @@ def fetch_cli(args: argparse.Namespace):
         upload_with_chunks(MANIFEST_PATH, f"metadata/{MANIFEST_PATH}")
 
 # ────────────────────────────────────────────────────────────────
-# CONVERT COMMAND
+# CONVERT COMMAND (3 GB raw‑JSON threshold)
 # ────────────────────────────────────────────────────────────────
 
 def _normalize(rec: dict) -> dict:
@@ -202,57 +182,47 @@ def _normalize(rec: dict) -> dict:
 def _flush(buf: List[dict], idx: int, cfg: str, dry: bool):
     if not buf:
         return
-    tmp = f"{cfg}_{idx}.parquet"
-    pq.write_table(pa.Table.from_pandas(pd.DataFrame(buf)), tmp, compression="snappy")
+    tmp_file = f"{cfg}_{idx}.parquet"
+    pq.write_table(pa.Table.from_pandas(pd.DataFrame(buf)), tmp_file, compression="snappy")
     if not dry:
-        upload_with_chunks(tmp, f"{cfg}/{tmp}")
-    os.remove(tmp)
+        upload_with_chunks(tmp_file, f"{cfg}/{tmp_file}")
+    os.remove(tmp_file)
 
 
 def convert_cli(args: argparse.Namespace):
     login(token=HF_TOKEN)
     cfg = (args.config or re.search(r"ol_dump_(\w+)_latest", args.input_file).group(1)).lower()
 
-    buf, idx, parsed, buf_bytes = [], 0, 0, 0
-    with gzip.open(args.input_file, "rt", encoding="utf‑8", errors="ignore") as fh:
+    buf: List[dict] = []
+    buf_bytes = 0
+    idx = 0
+    parsed = 0
+
+    with gzip.open(args.input_file, "rt", encoding="utf-8", errors="ignore") as fh:
         for line in fh:
             try:
-                buf.append(_normalize(json.loads(line.rsplit("\t", 1)[-1])))
+                record_json = line.rsplit("\t", 1)[-1]
+                buf.append(_normalize(json.loads(record_json)))
+                buf_bytes += len(record_json.encode("utf-8"))
                 parsed += 1
             except json.JSONDecodeError:
                 continue
-            if len(buf) >= 100_000:
-                _flush(buf, idx, cfg, args.dry_run); buf.clear(); idx += 1
+
+            if buf_bytes >= TARGET_BYTES:
+                _flush(buf, idx, cfg, args.dry_run)
+                buf.clear()
+                buf_bytes = 0
+                idx += 1
+
         if buf:
             _flush(buf, idx, cfg, args.dry_run)
-    print(f"📊 Parsed {parsed:,} lines into {idx + 1} chunk(s)")
+
+    print(f"📊 Parsed {parsed:,} lines into {idx + 1} chunk(s) (≤3 GB raw each)")
 
 # ────────────────────────────────────────────────────────────────
 # ENTRY POINT
 # ────────────────────────────────────────────────────────────────
 
 def main():
-    top = argparse.ArgumentParser(description="OpenLibrary pipeline")
-    sub = top.add_subparsers(dest="cmd", required=True)
-
-    # fetch sub‑command
-    f = sub.add_parser("fetch", help="Download & archive raw dumps")
-    f.add_argument("--only", help="Process only the given file name in FILES")
-    f.add_argument("--dry-run", action="store_true")
-    f.add_argument("--keep", action="store_true", help="Keep local copies after upload")
-
-    # convert sub‑command
-    c = sub.add_parser("convert", help="Convert one dump to Parquet & upload")
-    c.add_argument("input_file", help="Path to ol_dump_*.txt.gz")
-    c.add_argument("--config", help="authors | works | editions (auto‑detected)")
-    c.add_argument("--dry-run", action="store_true")
-
-    ns = top.parse_args()
-    if ns.cmd == "fetch":
-        fetch_cli(ns)
-    elif ns.cmd == "convert":
-        convert_cli(ns)
-
-
-if __name__ == "__main__":
-    main()
+    top = argparse.ArgumentParser(prog="openlibrary_pipeline")
+    sub = top.add
