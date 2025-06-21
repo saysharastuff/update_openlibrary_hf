@@ -32,7 +32,7 @@ HF_TOKEN: str | None = os.getenv("HF_TOKEN")
 HF_REPO_ID: str = os.getenv("HF_REPO_ID", "sayshara/openlibrary")
 MANIFEST_PATH = "ol_sync_manifest.json"
 CHUNK_SIZE_BYTES = 5 * 1024 * 1024 * 1024  # 5 GB
-TARGET_BYTES = 3 * 1024 ** 3               # 3 GB raw JSON per Parquet chunk
+TARGET_BYTES = 2 * 1024 ** 3               # 3 GB raw JSON per Parquet chunk
 
 FILES: Dict[str, str] = {
     "ol_dump_authors_latest.txt.gz": "https://openlibrary.org/data/ol_dump_authors_latest.txt.gz",
