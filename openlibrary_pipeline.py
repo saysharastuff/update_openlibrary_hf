@@ -225,4 +225,26 @@ def convert_cli(args: argparse.Namespace):
 
 def main():
     top = argparse.ArgumentParser(prog="openlibrary_pipeline")
-    sub = top.add
+    sub = top.add_subparsers(dest="cmd", required=True)
+
+    # fetch sub‑command
+    f = sub.add_parser("fetch", help="Download & archive raw dumps")
+    f.add_argument("--only", help="Process only the named dump file in FILES")
+    f.add_argument("--dry-run", action="store_true")
+    f.add_argument("--keep", action="store_true", help="Keep local copy after upload")
+
+    # convert sub‑command
+    c = sub.add_parser("convert", help="Convert one dump to Parquet & upload")
+    c.add_argument("input_file", help="Path to ol_dump_*.txt.gz")
+    c.add_argument("--config", help="authors | editions | works (auto‑detected)")
+    c.add_argument("--dry-run", action="store_true")
+
+    ns = top.parse_args()
+    if ns.cmd == "fetch":
+        fetch_cli(ns)
+    else:
+        convert_cli(ns)
+
+
+if __name__ == "__main__":
+    main()
