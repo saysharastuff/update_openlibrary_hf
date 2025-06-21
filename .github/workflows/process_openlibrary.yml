@@ -3,23 +3,13 @@ name: OpenLibrary to HuggingFace
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 9 * * 1"  # Mondays 09:00 UTC ≈ 4 AM US‑Central
+    # Every Monday at 09:00 UTC (≈ 4 AM US‑Central)
+    - cron: "0 9 * * 1"
 
 jobs:
   process:
-    strategy:
-      matrix:
-        include:
-          - target: authors
-            file: ol_dump_authors_latest.txt.gz
-          - target: editions
-            file: ol_dump_editions_latest.txt.gz
-          - target: works
-            file: ol_dump_works_latest.txt.gz
-      max-parallel: 3
-
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 360  # generous for large dumps
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       HF_REPO_ID: sayshara/openlibrary
@@ -40,16 +30,31 @@ jobs:
           path: ol_sync_manifest.json
           key: ol-manifest-${{ runner.os }}
 
-      - name: Install deps
+      - name: Install dependencies
         run: pip install -U pandas pyarrow huggingface_hub requests
 
-      - name: Process ${{ matrix.target }} dump
+      # -------------------- AUTHORS --------------------
+      - name: Process authors dump
         run: |
-          python openlibrary_pipeline.py fetch --only ${{ matrix.file }} --keep
-          python openlibrary_pipeline.py convert ${{ matrix.file }}
-          rm -f ${{ matrix.file }}*
+          python openlibrary_pipeline.py fetch --only ol_dump_authors_latest.txt.gz --keep
+          python openlibrary_pipeline.py convert ol_dump_authors_latest.txt.gz
+          rm -f ol_dump_authors_latest.txt.gz*
 
-      - name: Save manifest cache (last writer wins)
+      # -------------------- EDITIONS -------------------
+      - name: Process editions dump
+        run: |
+          python openlibrary_pipeline.py fetch --only ol_dump_editions_latest.txt.gz --keep
+          python openlibrary_pipeline.py convert ol_dump_editions_latest.txt.gz
+          rm -f ol_dump_editions_latest.txt.gz*
+
+      # -------------------- WORKS ----------------------
+      - name: Process works dump
+        run: |
+          python openlibrary_pipeline.py fetch --only ol_dump_works_latest.txt.gz --keep
+          python openlibrary_pipeline.py convert ol_dump_works_latest.txt.gz
+          rm -f ol_dump_works_latest.txt.gz*
+
+      - name: Save manifest cache
         uses: actions/cache@v3
         with:
           path: ol_sync_manifest.json
