@@ -107,7 +107,7 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
     with f:
         bad_lines = []
         writer = None
-        chunk_path = f"{output_prefix}.part{chunk_index}.parquet"
+        chunk_path = f"{output_prefix}.parquet" if chunk_index == 0 else f"{output_prefix}.part{chunk_index}.parquet"
         for i, line in enumerate(f):
             if i % 1_000_000 == 0 and i > 0:
                 print(f"📈 Processed {i:,} lines, {parsed_records:,} parsed so far...")
@@ -167,7 +167,7 @@ def convert_to_parquet_chunks(input_file: str, output_prefix: str, dry_run: bool
                     }
                     chunk_index += 1
                     writer = None
-                    chunk_path = f"{output_prefix}.part{chunk_index}.parquet"
+                    chunk_path = f"{output_prefix}.parquet" if chunk_index == 0 else f"{output_prefix}.part{chunk_index}.parquet"
         if buffer:
             df = pd.DataFrame(buffer)
             for name in schema.names:
