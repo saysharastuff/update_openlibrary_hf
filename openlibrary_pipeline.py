@@ -32,7 +32,7 @@ HF_TOKEN: str | None = os.getenv("HF_TOKEN")
 HF_REPO_ID: str = os.getenv("HF_REPO_ID", "sayshara/openlibrary")
 MANIFEST_PATH = "ol_sync_manifest.json"
 CHUNK_SIZE_BYTES = 5 * 1024 * 1024 * 1024  # 5 GB
-TARGET_BYTES = 2 * 1024 ** 3               # 3 GB raw JSON per Parquet chunk
+TARGET_BYTES = 1 * 1024 ** 3               # 1 GB raw JSON per Parquet chunk
 
 FILES: Dict[str, str] = {
     "ol_dump_authors_latest.txt.gz": "https://openlibrary.org/data/ol_dump_authors_latest.txt.gz",
@@ -167,7 +167,7 @@ def fetch_cli(args: argparse.Namespace):
         upload_with_chunks(MANIFEST_PATH, f"metadata/{MANIFEST_PATH}")
 
 # ────────────────────────────────────────────────────────────────
-# CONVERT COMMAND (3 GB raw‑JSON threshold)
+# CONVERT COMMAND (1 GB raw‑JSON threshold)
 # ────────────────────────────────────────────────────────────────
 
 def _normalize(rec: dict) -> dict:
@@ -217,7 +217,7 @@ def convert_cli(args: argparse.Namespace):
         if buf:
             _flush(buf, idx, cfg, args.dry_run)
 
-    print(f"📊 Parsed {parsed:,} lines into {idx + 1} chunk(s) (≤3 GB raw each)")
+    print(f"📊 Parsed {parsed:,} lines into {idx + 1} chunk(s) (≤1 GB raw each)")
 
 # ────────────────────────────────────────────────────────────────
 # ENTRY POINT
