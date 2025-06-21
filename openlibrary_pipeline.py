@@ -86,7 +86,7 @@ def ensure_branch_exists(branch: str = "backup/raw") -> None:
     )
 
 
-def upload_with_chunks(local_path: str | Path, repo_path: str, *, dry: bool = False, branch: str | None = None):(local_path: str | Path, repo_path: str, *, dry: bool = False, branch: str | None = None):
+def upload_with_chunks(local_path: str | Path, repo_path: str, *, dry: bool = False, branch: str | None = None):
     local_path = str(local_path)
     size = os.path.getsize(local_path)
     revision = branch or ("backup/raw" if local_path.endswith(".txt.gz") else "main")
