@@ -31,8 +31,10 @@ from huggingface_hub import HfApi, login, upload_file
 HF_TOKEN: str | None = os.getenv("HF_TOKEN")
 HF_REPO_ID: str = os.getenv("HF_REPO_ID", "sayshara/openlibrary")
 MANIFEST_PATH = "ol_sync_manifest.json"
-CHUNK_SIZE_BYTES = 5 * 1024 * 1024 * 1024  # 5 GB
-TARGET_BYTES = 1 * 1024 ** 3               # 1 GB raw JSON per Parquet chunk
+CHUNK_SIZE_BYTES = 5 * 1024 * 1024 * 1024  # 5 GB – chunked upload threshold
+
+TARGET_BYTES = 3 * 1024 ** 3   # 3 GB raw JSON per Parquet file
+BATCH_ROWS   = 50_000          # Arrow/Pandas rows kept in memory before writing
 
 FILES: Dict[str, str] = {
     "ol_dump_authors_latest.txt.gz": "https://openlibrary.org/data/ol_dump_authors_latest.txt.gz",
@@ -59,16 +61,18 @@ def get_last_modified(url: str) -> str | None:
 
 
 def ensure_branch_exists(branch: str = "backup/raw") -> None:
+    """Ensure *branch* exists in the dataset repo (idempotent)."""
     HfApi().create_branch(
         repo_id=HF_REPO_ID,
         repo_type="dataset",
         branch=branch,
         token=HF_TOKEN,
-        exist_ok=True,  # quietly ignore if already exists
+        exist_ok=True,
     )
 
 
 def upload_with_chunks(local_path: str | Path, repo_path: str, *, dry: bool = False, branch: str | None = None):
+    """Upload *local_path* to the Hub, splitting >5 GB files into 5 GB parts."""
     local_path = str(local_path)
     size = os.path.getsize(local_path)
     revision = branch or ("backup/raw" if local_path.endswith(".txt.gz") else "main")
@@ -167,7 +171,7 @@ def fetch_cli(args: argparse.Namespace):
         upload_with_chunks(MANIFEST_PATH, f"metadata/{MANIFEST_PATH}")
 
 # ────────────────────────────────────────────────────────────────
-# CONVERT COMMAND (1 GB raw‑JSON threshold)
+# CONVERT COMMAND – streaming Parquet writer
 # ────────────────────────────────────────────────────────────────
 
 def _normalize(rec: dict) -> dict:
@@ -179,45 +183,62 @@ def _normalize(rec: dict) -> dict:
     return rec
 
 
-def _flush(buf: List[dict], idx: int, cfg: str, dry: bool):
-    if not buf:
-        return
-    tmp_file = f"{cfg}_{idx}.parquet"
-    pq.write_table(pa.Table.from_pandas(pd.DataFrame(buf)), tmp_file, compression="snappy")
-    if not dry:
-        upload_with_chunks(tmp_file, f"{cfg}/{tmp_file}")
-    os.remove(tmp_file)
-
-
 def convert_cli(args: argparse.Namespace):
     login(token=HF_TOKEN)
     cfg = (args.config or re.search(r"ol_dump_(\w+)_latest", args.input_file).group(1)).lower()
 
-    buf: List[dict] = []
-    buf_bytes = 0
-    idx = 0
+    idx = 0  # Parquet file counter
     parsed = 0
+
+    def out_path(i: int) -> str:
+        return f"{cfg}_{i}.parquet"
+
+    writer: pq.ParquetWriter | None = None
+    cur_size = 0  # uncompressed size of tables written so far
+    buf: List[dict] = []
+
+    def flush_batch():
+        nonlocal writer, cur_size, buf
+        if not buf:
+            return
+        table = pa.Table.from_pandas(pd.DataFrame(buf))
+        if writer is None:
+            writer = pq.ParquetWriter(out_path(idx), table.schema, compression="snappy")
+        writer.write_table(table)
+        cur_size += table.nbytes
+        buf.clear()
 
     with gzip.open(args.input_file, "rt", encoding="utf-8", errors="ignore") as fh:
         for line in fh:
             try:
                 record_json = line.rsplit("\t", 1)[-1]
                 buf.append(_normalize(json.loads(record_json)))
-                buf_bytes += len(record_json.encode("utf-8"))
                 parsed += 1
             except json.JSONDecodeError:
                 continue
 
-            if buf_bytes >= TARGET_BYTES:
-                _flush(buf, idx, cfg, args.dry_run)
-                buf.clear()
-                buf_bytes = 0
+            if len(buf) >= BATCH_ROWS:
+                flush_batch()
+
+            # if current Parquet file grew beyond target, close & upload
+            if writer and cur_size >= TARGET_BYTES:
+                writer.close()
+                if not args.dry_run:
+                    upload_with_chunks(out_path(idx), f"{cfg}/{out_path(idx)}")
+                os.remove(out_path(idx))
                 idx += 1
+                writer = None
+                cur_size = 0
 
-        if buf:
-            _flush(buf, idx, cfg, args.dry_run)
+        # final flush
+        flush_batch()
+        if writer:
+            writer.close()
+            if not args.dry_run:
+                upload_with_chunks(out_path(idx), f"{cfg}/{out_path(idx)}")
+            os.remove(out_path(idx))
 
-    print(f"📊 Parsed {parsed:,} lines into {idx + 1} chunk(s) (≤1 GB raw each)")
+    print(f"📊 Parsed {parsed:,} lines into {idx + 1}  ≤3 GB Parquet part(s)")
 
 # ────────────────────────────────────────────────────────────────
 # ENTRY POINT
@@ -227,24 +248,6 @@ def main():
     top = argparse.ArgumentParser(prog="openlibrary_pipeline")
     sub = top.add_subparsers(dest="cmd", required=True)
 
-    # fetch sub‑command
     f = sub.add_parser("fetch", help="Download & archive raw dumps")
-    f.add_argument("--only", help="Process only the named dump file in FILES")
-    f.add_argument("--dry-run", action="store_true")
-    f.add_argument("--keep", action="store_true", help="Keep local copy after upload")
-
-    # convert sub‑command
-    c = sub.add_parser("convert", help="Convert one dump to Parquet & upload")
-    c.add_argument("input_file", help="Path to ol_dump_*.txt.gz")
-    c.add_argument("--config", help="authors | editions | works (auto‑detected)")
-    c.add_argument("--dry-run", action="store_true")
-
-    ns = top.parse_args()
-    if ns.cmd == "fetch":
-        fetch_cli(ns)
-    else:
-        convert_cli(ns)
-
-
-if __name__ == "__main__":
-    main()
+    f.add_argument("--only")
+    f.add_argument("--dry-run", action
