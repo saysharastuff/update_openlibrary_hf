@@ -1,0 +1,8 @@
+--find-links https://download.pytorch.org/whl/torch
+--find-links https://download.pytorch.org/whl/torchvision
+
+# Dependencies
+txtai[api, cloud, graph, vectors]
+torch==2.7.1+cpu
+torchvision==0.22.1+cpu
+plotly==6.1.2
