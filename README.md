@@ -13,5 +13,5 @@ This repository automates the process of downloading the latest OpenLibrary dump
 
 ## ✨ Files
 
-- `openlibrary_pipeline.py`: Downloads dataset from OpenLibrary and then pushes the to Hugging Face.
+- `openlibrary_pipeline.py`: Downloads the dataset from OpenLibrary and then pushes it to Hugging Face.
 - `.github/workflows//process_openlibrary.yml`: GitHub Actions CI job.
