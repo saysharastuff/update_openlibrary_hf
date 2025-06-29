@@ -17,7 +17,7 @@ import re
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 
 import pandas as pd
 import pyarrow as pa
@@ -184,27 +184,60 @@ def _normalize(rec: dict) -> dict:
     return rec
 
 
+def sniff_schema(path: str) -> pa.Schema:
+    """Stream *path* once to determine the Parquet schema."""
+    field_types: Dict[str, pa.DataType] = {}
+    with gzip.open(path, "rt", encoding="utf-8", errors="ignore") as fh:
+        for line in fh:
+            try:
+                record_json = line.rsplit("\t", 1)[-1]
+                rec = _normalize(json.loads(record_json))
+            except json.JSONDecodeError:
+                continue
+            for k, v in rec.items():
+                if v is None:
+                    typ = pa.string()
+                else:
+                    try:
+                        typ = pa.scalar(v).type
+                    except Exception:
+                        typ = pa.string()
+                prev = field_types.get(k)
+                if prev is None:
+                    field_types[k] = typ
+                elif prev != typ:
+                    field_types[k] = pa.string()
+
+    fields = [pa.field(name, field_types.get(name, pa.string())) for name in sorted(field_types)]
+    return pa.schema(fields)
+
+
 def convert_cli(args: argparse.Namespace):
     login(token=HF_TOKEN)
     cfg = (args.config or re.search(r"ol_dump_(\w+)_latest", args.input_file).group(1)).lower()
 
+    schema = sniff_schema(args.input_file)
+    schema_json = {name: str(t) for name, t in zip(schema.names, schema.types)}
+    schema_path = f"{cfg}_schema.json"
+    Path(schema_path).write_text(json.dumps(schema_json, indent=2))
+    if not args.dry_run:
+        upload_with_chunks(schema_path, f"metadata/{schema_path}")
+
     idx = 0                   # part counter
     parsed = 0                # line counter
     writer: pq.ParquetWriter | None = None
-    writer_cols: list[str] | None = None
     cur_size = 0              # uncompressed bytes in current part
     buf: list[dict] = []
 
     def out_path(i: int) -> str:
         return f"{cfg}_{i}.parquet"
 
-    def start_writer(table: pa.Table):
-        nonlocal writer, writer_cols
-        writer_cols = table.schema.names            # fixed order for this part
-        return pq.ParquetWriter(out_path(idx), table.schema, compression="snappy")
+    def start_writer():
+        nonlocal writer
+        return pq.ParquetWriter(out_path(idx), schema, compression="snappy")
 
     def close_and_upload():
-        nonlocal writer, writer_cols, cur_size, idx
+        nonlocal writer, cur_size, idx
         if writer:
             writer.close()
             if not args.dry_run:
@@ -212,7 +245,6 @@ def convert_cli(args: argparse.Namespace):
             os.remove(out_path(idx))
             idx += 1
             writer = None
-            writer_cols = None
             cur_size = 0
 
     def flush_batch():
@@ -221,22 +253,14 @@ def convert_cli(args: argparse.Namespace):
             return
         df = pd.DataFrame(buf)
 
-        # Align to existing schema
-        if writer_cols is not None:
-            for col in writer_cols:
-                if col not in df:
-                    df[col] = None
-            df = df[writer_cols]
-        table = pa.Table.from_pandas(df)
+        for col in schema.names:
+            if col not in df:
+                df[col] = None
+        df = df[schema.names]
+        table = pa.Table.from_pandas(df, schema=schema, preserve_index=False)
 
-        # If writer absent OR new columns appeared, start a new part
-        if writer is None or table.schema.names != writer_cols:
-            close_and_upload()
-            writer = start_writer(table)
-
-        # Cast to the writer schema to ensure Arrow types match (avoids NULL vs STRING issues)
-        if writer is not None:
-            table = table.cast(writer.schema)
+        if writer is None:
+            writer = start_writer()
         writer.write_table(table)
         cur_size += table.nbytes
         buf.clear()
