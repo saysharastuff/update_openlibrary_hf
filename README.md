@@ -15,3 +15,11 @@ This repository automates the process of downloading the latest OpenLibrary dump
 
 - `openlibrary_pipeline.py`: Downloads the dataset from OpenLibrary and then pushes it to Hugging Face.
 - `.github/workflows//process_openlibrary.yml`: GitHub Actions CI job.
+
+## 📑 Schema information
+
+During conversion the pipeline determines the full schema of each OpenLibrary dump.
+The discovered column names and Arrow data types are stored in `<config>_schema.json`
+and uploaded under the `metadata/` directory of the dataset repository. Every
+Parquet file is written using this schema so all parts share identical columns
+and types.
